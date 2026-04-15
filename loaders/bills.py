@@ -91,8 +91,34 @@ def _sample_bills() -> pd.DataFrame:
             "urgency": "Demo rationale: estimated effective date proximity.",
         })
 
-    sponsors_demo = '[{"name":"Demo Sponsor A","party":"D","role":"Senator","district":"—"},' \
-                    '{"name":"Demo Sponsor B","party":"R","role":"Representative","district":"—"}]'
+    sponsors_demo = '[{"name":"Demo Sponsor A","party":"D","role":"Senator"},' \
+                    '{"name":"Demo Sponsor B","party":"R","role":"Representative"}]'
+
+    def _votes_for(status):
+        """Synthetic roll calls for bills that reached a chamber vote. Empty for
+        introduced / in-committee bills."""
+        if status in ("enacted",):
+            return json.dumps([
+                {"chamber": "House", "date": "2025-10-08", "yea": 88, "nay": 56, "nv": 2, "absent": 4, "passed": 1, "result": "Passed"},
+                {"chamber": "Senate", "date": "2025-11-12", "yea": 22, "nay": 13, "nv": 0, "absent": 0, "passed": 1, "result": "Passed"},
+                {"chamber": "Governor", "date": "2025-11-20", "yea": 1, "nay": 0, "nv": 0, "absent": 0, "passed": 1, "result": "Signed"},
+            ])
+        if status == "passed":
+            return json.dumps([
+                {"chamber": "House", "date": "2026-01-14", "yea": 74, "nay": 62, "nv": 1, "absent": 5, "passed": 1, "result": "Passed"},
+                {"chamber": "Senate", "date": "2026-03-01", "yea": 19, "nay": 16, "nv": 0, "absent": 0, "passed": 1, "result": "Passed"},
+            ])
+        if status == "passed_chamber":
+            return json.dumps([
+                {"chamber": "Senate", "date": "2026-02-18", "yea": 24, "nay": 11, "nv": 0, "absent": 0, "passed": 1, "result": "Passed"},
+            ])
+        if status == "vetoed":
+            return json.dumps([
+                {"chamber": "House", "date": "2025-07-10", "yea": 51, "nay": 47, "nv": 0, "absent": 2, "passed": 1, "result": "Passed"},
+                {"chamber": "Senate", "date": "2025-08-02", "yea": 27, "nay": 14, "nv": 0, "absent": 0, "passed": 1, "result": "Passed"},
+                {"chamber": "Governor", "date": "2025-08-20", "yea": 0, "nay": 1, "nv": 0, "absent": 0, "passed": 0, "result": "Vetoed"},
+            ])
+        return "[]"
 
     def mk(bill_id, state, area_id, level, juris, number, title, intro, last, status,
            subjects, score, direction):
@@ -105,7 +131,7 @@ def _sample_bills() -> pd.DataFrame:
             True, "",
             "Demo placeholder. Real bill summaries and risk rationales appear after LegiScan + the AI batch run.",
             score, _breakdown(score), "demo", _rationale(score),
-            direction,
+            direction, _votes_for(status),
         )
 
     samples = [
@@ -134,7 +160,7 @@ def _sample_bills() -> pd.DataFrame:
         "sponsors_json", "subjects_json", "url", "text_blob_path",
         "cre_relevant", "cre_keywords_hit",
         "ai_summary", "ai_risk_score", "ai_risk_breakdown_json", "ai_model_version",
-        "ai_risk_rationale_json", "impact_direction",
+        "ai_risk_rationale_json", "impact_direction", "votes_json",
     ]
     df = pd.DataFrame(samples, columns=cols)
     df["introduced_date"] = pd.to_datetime(df["introduced_date"])

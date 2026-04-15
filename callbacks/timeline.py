@@ -56,12 +56,22 @@ def render(filters, zoom):
             label = f"{row.get('bill_number','')} — {row.get('title','')}"
             legend_items.append(html.Div(
                 [
-                    html.Span(className="swatch", style={"background": color}),
-                    html.Span(label, className="label", title=label),
+                    html.Span(
+                        className="swatch",
+                        style={"background": color},
+                        id={"type": "bill-legend-swatch", "bill_id": bill_id},
+                        n_clicks=0,
+                        title="Click to hide / show",
+                    ),
+                    html.Span(
+                        label,
+                        className="label",
+                        title=label,
+                        id={"type": "bill-legend-label", "bill_id": bill_id},
+                        n_clicks=0,
+                    ),
                 ],
                 className="bill-legend-item",
-                id={"type": "bill-legend-item", "bill_id": bill_id},
-                n_clicks=0,
                 **{"data-bill-id": bill_id},
             ))
 
@@ -80,11 +90,10 @@ clientside_callback(
     function(n_clicks_array, hidden) {
         const trig = window.dash_clientside.callback_context.triggered[0];
         if (!trig) return window.dash_clientside.no_update;
-        // Parse which legend item fired
         let id;
         try { id = JSON.parse(trig.prop_id.split('.')[0]); }
         catch (e) { return window.dash_clientside.no_update; }
-        if (!id || id.type !== 'bill-legend-item') return window.dash_clientside.no_update;
+        if (!id || id.type !== 'bill-legend-swatch') return window.dash_clientside.no_update;
         if (!trig.value) return window.dash_clientside.no_update;  // fresh render, ignore
 
         const billId = id.bill_id;
@@ -92,14 +101,12 @@ clientside_callback(
         if (set.has(billId)) set.delete(billId); else set.add(billId);
         const arr = [...set].sort();
 
-        // Toggle the legend item's .hidden class
         document
             .querySelectorAll('.bill-legend-item')
             .forEach(el => {
                 const did = el.getAttribute('data-bill-id');
                 if (did) el.classList.toggle('hidden', set.has(did));
             });
-        // Toggle display:none on every timeline card for this bill_id
         document
             .querySelectorAll('.bill-card')
             .forEach(el => {
@@ -110,11 +117,17 @@ clientside_callback(
                     }
                 } catch (e) {}
             });
+        document
+            .querySelectorAll('.timeline-dot[data-bill-id], .timeline-connector[data-bill-id]')
+            .forEach(el => {
+                const did = el.getAttribute('data-bill-id');
+                if (did) el.style.display = set.has(did) ? 'none' : '';
+            });
         return arr;
     }
     """,
     Output("hidden-bills-store", "data"),
-    Input({"type": "bill-legend-item", "bill_id": ALL}, "n_clicks"),
+    Input({"type": "bill-legend-swatch", "bill_id": ALL}, "n_clicks"),
     State("hidden-bills-store", "data"),
     prevent_initial_call=True,
 )
@@ -138,6 +151,12 @@ clientside_callback(
                 }
             } catch (e) {}
         });
+        document
+            .querySelectorAll('.timeline-dot[data-bill-id], .timeline-connector[data-bill-id]')
+            .forEach(el => {
+                const did = el.getAttribute('data-bill-id');
+                if (did) el.style.display = set.has(did) ? 'none' : '';
+            });
         return window.dash_clientside.no_update;
     }
     """,

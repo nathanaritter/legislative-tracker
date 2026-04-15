@@ -47,8 +47,8 @@ def update_cities(state, counties, current):
     Input("status-filter", "value"),
     Input("subject-filter", "value"),
     Input("risk-filter", "value"),
-    Input("date-filter-start", "date"),
-    Input("date-filter-end", "date"),
+    Input("date-filter-start", "value"),
+    Input("date-filter-end", "value"),
 )
 def collect_filters(state, counties, cities, statuses, subjects, risk, start, end):
     return {
@@ -68,11 +68,11 @@ def collect_filters(state, counties, cities, statuses, subjects, risk, start, en
     Output("status-filter", "value"),
     Output("subject-filter", "value"),
     Output("risk-filter", "value"),
-    Output("date-filter-start", "date"),
-    Output("date-filter-end", "date"),
+    Output("date-filter-start", "value"),
+    Output("date-filter-end", "value"),
     Input("reset-filters-btn", "n_clicks"),
     prevent_initial_call=True,
 )
 def reset_filters(_n):
     today = date.today()
-    return None, [], [], [0, 100], today - timedelta(days=365 * 3), today
+    return None, [], [], [0, 100], (today - timedelta(days=365 * 3)).isoformat(), today.isoformat()

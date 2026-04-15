@@ -355,9 +355,11 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoo
         row_top, anchor = ROWS[c.row]
 
         children.append(_stage_card(c, bill_dict, top=row_top, left=c.x_px - CARD_W // 2))
-        children.append(html.Div(className="timeline-dot",
-                                  style={"left": f"{c.x_px}px", "top": f"{AXIS_Y}px",
-                                          "background": color}))
+        children.append(html.Div(
+            className="timeline-dot",
+            style={"left": f"{c.x_px}px", "top": f"{AXIS_Y}px", "background": color},
+            **{"data-bill-id": c.bill_id},
+        ))
         if anchor.startswith("above"):
             top = row_top + CARD_H
             height = AXIS_Y - top
@@ -367,11 +369,14 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoo
             height = row_top - AXIS_Y
             y = top
         if height > 0:
-            children.append(html.Div(className="timeline-connector",
-                                      style={"left": f"{c.x_px}px",
-                                              "top": f"{y}px",
-                                              "height": f"{height}px",
-                                              "background": color}))
+            children.append(html.Div(
+                className="timeline-connector",
+                style={"left": f"{c.x_px}px",
+                        "top": f"{y}px",
+                        "height": f"{height}px",
+                        "background": color},
+                **{"data-bill-id": c.bill_id},
+            ))
 
     n_bills = len(set(c.bill_id for c in cards))
     meta = f"{len(cards)} stage events across {n_bills} bills · {d_min.strftime('%b %Y')} – {d_max.strftime('%b %Y')}"

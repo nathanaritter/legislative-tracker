@@ -128,11 +128,47 @@ def build_breakdown_chart(breakdown_json):
 
 
 SPONSOR_COLUMNS = [
-    {"field": "name", "headerName": "Name", "width": 180},
-    {"field": "party", "headerName": "Party", "width": 70},
-    {"field": "role", "headerName": "Role", "width": 130},
-    {"field": "district", "headerName": "District", "width": 90},
+    {"field": "name", "headerName": "Name", "flex": 2, "minWidth": 180},
+    {"field": "party", "headerName": "Party", "width": 80},
+    {"field": "role", "headerName": "Role", "flex": 1, "minWidth": 140},
 ]
+
+
+VOTE_COLUMNS = [
+    {"field": "chamber", "headerName": "Chamber", "width": 110},
+    {"field": "date", "headerName": "Date", "width": 110},
+    {"field": "yea", "headerName": "Yea", "width": 70,
+     "cellStyle": {"color": "#059669", "fontWeight": "600"}},
+    {"field": "nay", "headerName": "Nay", "width": 70,
+     "cellStyle": {"color": "#dc2626", "fontWeight": "600"}},
+    {"field": "other", "headerName": "NV / Abs", "width": 90},
+    {"field": "result", "headerName": "Result", "flex": 1, "minWidth": 110,
+     "cellStyle": {"function":
+                    "params.value === 'Passed' ? {color:'#059669', fontWeight:'600'} : "
+                    "params.value === 'Failed' || params.value === 'Vetoed' ? {color:'#dc2626', fontWeight:'600'} : null"}},
+]
+
+
+def build_votes_section(votes):
+    """Renders the voting tallies section — hidden entirely when there are no
+    recorded votes (introduced/in-committee bills)."""
+    import dash_ag_grid as dag
+    from dash import html
+    if not votes:
+        return html.Div()  # empty placeholder
+    return html.Div(
+        [
+            html.Div("Voting record", className="modal-section-heading"),
+            dag.AgGrid(
+                id="detail-votes-grid",
+                columnDefs=VOTE_COLUMNS,
+                rowData=votes,
+                defaultColDef={"sortable": True, "resizable": True},
+                className="ag-theme-alpine",
+                style={"height": f"{max(90, 46 + 36 * len(votes))}px", "width": "100%"},
+            ),
+        ]
+    )
 
 
 def build_detail_modal():
@@ -144,11 +180,14 @@ def build_detail_modal():
                     html.Div(id="detail-meta",
                               style={"color": GRAY_500, "marginBottom": "12px", "fontSize": "12px"}),
 
+                    html.Div("AI summary", className="modal-section-heading",
+                              style={"marginTop": "0"}),
+                    dcc.Markdown(id="detail-summary",
+                                  style={"fontSize": "12px", "lineHeight": "1.5",
+                                          "marginBottom": "14px"}),
+
                     html.Div(id="detail-risk-summary"),
                     html.Div(id="detail-risk-breakdown"),
-
-                    html.Div("AI summary", className="modal-section-heading"),
-                    dcc.Markdown(id="detail-summary", style={"fontSize": "12px", "lineHeight": "1.5"}),
 
                     html.Div("Sponsors", className="modal-section-heading"),
                     dag.AgGrid(
@@ -159,6 +198,8 @@ def build_detail_modal():
                         className="ag-theme-alpine",
                         style={"height": "160px", "width": "100%"},
                     ),
+
+                    html.Div(id="detail-votes"),
 
                     html.Div("Subjects", className="modal-section-heading"),
                     html.Div(id="detail-subjects"),

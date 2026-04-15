@@ -85,26 +85,22 @@ def build_sidebar():
                     html.Div(
                         [
                             html.Div("Start", className="date-label"),
-                            dcc.DatePickerSingle(
+                            dcc.Input(
                                 id="date-filter-start",
-                                date=default_start,
-                                display_format="MMM D, YYYY",
-                                placeholder="Start",
-                                className="brand-datepicker",
-                                with_portal=True,
+                                type="date",
+                                value=default_start.isoformat(),
+                                className="brand-dateinput",
                             ),
                         ]
                     ),
                     html.Div(
                         [
                             html.Div("End", className="date-label"),
-                            dcc.DatePickerSingle(
+                            dcc.Input(
                                 id="date-filter-end",
-                                date=today,
-                                display_format="MMM D, YYYY",
-                                placeholder="End",
-                                className="brand-datepicker",
-                                with_portal=True,
+                                type="date",
+                                value=today.isoformat(),
+                                className="brand-dateinput",
                             ),
                         ]
                     ),
