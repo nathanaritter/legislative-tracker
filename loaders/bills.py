@@ -109,24 +109,24 @@ def _sample_bills() -> pd.DataFrame:
         )
 
     samples = [
-        # State-level DEMO bills, spread across target markets + statuses. Direction
-        # varies: pre-emption + zoning liberalization bills are favorable for CRE
-        # owners; rent control / surveillance pricing bans / eviction expansions
-        # are adverse; property-tax transparency / insurance reform are mixed.
-        mk("demo:CO:DEMO-01", "CO", 8,  "state", "Colorado State", "DEMO-01", "Local Rent Stabilization Authority", today - timedelta(days=120), today - timedelta(days=15),  "passed_chamber", '["rent_control"]',      72, "adverse"),
-        mk("demo:CO:DEMO-02", "CO", 8,  "state", "Colorado State", "DEMO-02", "Utility Billing Transparency",        today - timedelta(days=60),  today - timedelta(days=20),  "in_committee",   '["habitability"]',      55, "adverse"),
-        mk("demo:CO:DEMO-03", "CO", 8,  "state", "Colorado State", "DEMO-03", "Uniform Property-Tax Protest Rules",  today - timedelta(days=150), today - timedelta(days=30),  "passed",         '["property_tax"]',      48, "favorable"),
-        mk("demo:CO:DEMO-04", "CO", 8,  "state", "Colorado State", "DEMO-04", "Tenant-Lawyer Funding",               today - timedelta(days=70),  today - timedelta(days=25),  "in_committee",   '["eviction"]',          40, "adverse"),
-        mk("demo:CO:DEMO-05", "CO", 8,  "state", "Colorado State", "DEMO-05", "Surveillance Pricing Ban",            today - timedelta(days=40),  today - timedelta(days=10),  "introduced",     '["rent_control"]',      68, "adverse"),
-        mk("demo:TX:DEMO-06", "TX", 48, "state", "Texas State",    "DEMO-06", "Local Pre-emption Act (DEMO)",        today - timedelta(days=400), today - timedelta(days=260), "enacted",        '["zoning","land_use"]', 58, "favorable"),
-        mk("demo:FL:DEMO-07", "FL", 12, "state", "Florida State",  "DEMO-07", "Residential Landlord Pre-emption",    today - timedelta(days=320), today - timedelta(days=220), "enacted",        '["rent_control"]',      60, "favorable"),
-        mk("demo:FL:DEMO-08", "FL", 12, "state", "Florida State",  "DEMO-08", "Property Insurance Transparency",     today - timedelta(days=130), today - timedelta(days=40),  "passed_chamber", '["insurance"]',         50, "mixed"),
-        mk("demo:AZ:DEMO-09", "AZ", 4,  "state", "Arizona State",  "DEMO-09", "Starter Home Zoning",                 today - timedelta(days=90),  today - timedelta(days=5),   "passed",         '["zoning","adu"]',      74, "favorable"),
-        mk("demo:UT:DEMO-10", "UT", 49, "state", "Utah State",     "DEMO-10", "Housing Affordability Amendments",    today - timedelta(days=180), today - timedelta(days=95),  "enacted",        '["affordable_housing"]',65, "mixed"),
+        # DEMO impact_direction is evaluated from the perspective of a MULTIFAMILY
+        # OWNER/INVESTOR: anything that increases rental supply, caps rents, slows
+        # evictions, or raises operating costs is ADVERSE. Anything that restricts
+        # competing supply or pre-empts local regulation is FAVORABLE.
+        mk("demo:CO:DEMO-01", "CO", 8,  "state", "Colorado State", "DEMO-01", "Local Rent Stabilization Authority", today - timedelta(days=120), today - timedelta(days=15),  "passed_chamber", '["rent_control"]',      72, "adverse"),    # rent caps
+        mk("demo:CO:DEMO-02", "CO", 8,  "state", "Colorado State", "DEMO-02", "Utility Billing Transparency",        today - timedelta(days=60),  today - timedelta(days=20),  "in_committee",   '["habitability"]',      55, "adverse"),    # RUBS markup ban
+        mk("demo:CO:DEMO-03", "CO", 8,  "state", "Colorado State", "DEMO-03", "Uniform Property-Tax Protest Rules",  today - timedelta(days=150), today - timedelta(days=30),  "passed",         '["property_tax"]',      48, "favorable"),  # easier appeals
+        mk("demo:CO:DEMO-04", "CO", 8,  "state", "Colorado State", "DEMO-04", "Tenant-Lawyer Funding",               today - timedelta(days=70),  today - timedelta(days=25),  "in_committee",   '["eviction"]',          40, "adverse"),    # slower evictions
+        mk("demo:CO:DEMO-05", "CO", 8,  "state", "Colorado State", "DEMO-05", "Surveillance Pricing Ban",            today - timedelta(days=40),  today - timedelta(days=10),  "introduced",     '["rent_control"]',      68, "adverse"),    # limits RMS pricing
+        mk("demo:TX:DEMO-06", "TX", 48, "state", "Texas State",    "DEMO-06", "Local Pre-emption Act (DEMO)",        today - timedelta(days=400), today - timedelta(days=260), "enacted",        '["zoning","land_use"]', 58, "favorable"),  # blocks local rent/tenant rules
+        mk("demo:FL:DEMO-07", "FL", 12, "state", "Florida State",  "DEMO-07", "Residential Landlord Pre-emption",    today - timedelta(days=320), today - timedelta(days=220), "enacted",        '["rent_control"]',      60, "favorable"),  # blocks local rent caps
+        mk("demo:FL:DEMO-08", "FL", 12, "state", "Florida State",  "DEMO-08", "Property Insurance Transparency",     today - timedelta(days=130), today - timedelta(days=40),  "passed_chamber", '["insurance"]',         50, "mixed"),      # rate board could help or hurt
+        mk("demo:AZ:DEMO-09", "AZ", 4,  "state", "Arizona State",  "DEMO-09", "Starter Home Zoning",                 today - timedelta(days=90),  today - timedelta(days=5),   "passed",         '["zoning","adu"]',      74, "adverse"),    # expands SFR/ADU supply
+        mk("demo:UT:DEMO-10", "UT", 49, "state", "Utah State",     "DEMO-10", "Housing Affordability Amendments",    today - timedelta(days=180), today - timedelta(days=95),  "enacted",        '["affordable_housing"]',65, "adverse"),    # mandates missing-middle supply
         # City-level DEMO bills
-        mk("demo:denver:DEMO-11",    "CO", 8,  "city", "Denver",             "Denver DEMO-11",    "Short-Term Rental Enforcement",   today - timedelta(days=220), today - timedelta(days=185), "passed",         '["short_term_rental"]', 44, "adverse"),
-        mk("demo:austin:DEMO-12",    "TX", 48, "city", "Austin",             "Austin DEMO-12",    "Compatibility Standards Overhaul",today - timedelta(days=160), today - timedelta(days=45),  "passed_chamber", '["zoning"]',            52, "favorable"),
-        mk("demo:nashville:DEMO-13", "TN", 47, "city", "Nashville-Davidson", "Nashville DEMO-13", "Workforce Housing Expansion",     today - timedelta(days=75),  today - timedelta(days=15),  "in_committee",   '["affordable_housing"]',40, "favorable"),
+        mk("demo:denver:DEMO-11",    "CO", 8,  "city", "Denver",             "Denver DEMO-11",    "Short-Term Rental Enforcement",   today - timedelta(days=220), today - timedelta(days=185), "passed",         '["short_term_rental"]', 44, "favorable"),  # restricts STR competition
+        mk("demo:austin:DEMO-12",    "TX", 48, "city", "Austin",             "Austin DEMO-12",    "Compatibility Standards Overhaul",today - timedelta(days=160), today - timedelta(days=45),  "passed_chamber", '["zoning"]',            52, "adverse"),    # liberalizes zoning -> more MF supply
+        mk("demo:nashville:DEMO-13", "TN", 47, "city", "Nashville-Davidson", "Nashville DEMO-13", "Workforce Housing Expansion",     today - timedelta(days=75),  today - timedelta(days=15),  "in_committee",   '["affordable_housing"]',40, "adverse"),    # PILOT + TIF -> competing AH supply
     ]
     cols = [
         "bill_id", "source", "state", "area_id", "jurisdiction_level", "jurisdiction_name",

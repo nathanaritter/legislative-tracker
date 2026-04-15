@@ -218,9 +218,9 @@ def build_timeline_card_area():
     zoom_controls = html.Div(
         [
             html.Span("Zoom", className="zoom-label"),
-            html.Button("−", id="zoom-out-btn", className="zoom-btn", title="Squish (less pixels/day)"),
-            html.Button("Fit", id="zoom-fit-btn", className="zoom-btn", title="Reset zoom"),
-            html.Button("+", id="zoom-in-btn", className="zoom-btn", title="Expand (more pixels/day)"),
+            html.Button("−", id="zoom-out-btn", className="zoom-btn", n_clicks=0, title="Squish (less pixels/day)"),
+            html.Button("Fit", id="zoom-fit-btn", className="zoom-btn", n_clicks=0, title="Reset zoom"),
+            html.Button("+", id="zoom-in-btn", className="zoom-btn", n_clicks=0, title="Expand (more pixels/day)"),
         ],
         className="zoom-controls",
     )

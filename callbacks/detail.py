@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
     Output("detail-download-btn", "href"),
     Output("detail-download-btn", "disabled"),
     Output("selected-bill-store", "data"),
-    Input({"type": "bill-card", "bill_id": ALL}, "n_clicks"),
+    Input({"type": "bill-card", "bill_id": ALL, "event": ALL, "date": ALL}, "n_clicks"),
     Input("detail-close-btn", "n_clicks"),
     State("detail-modal", "is_open"),
     prevent_initial_call=True,
