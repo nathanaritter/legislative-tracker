@@ -23,26 +23,29 @@ from dash import html
 from config import STATUS_GROUP, STAGE_LABELS, GRAY_500
 
 
-# Canvas / row geometry
-CANVAS_HEIGHT = 560
-AXIS_Y = 280
+# Canvas / row geometry — card height 96, rows spaced 110 apart so the card
+# bottoms clear the axis with a visible connector line. Rows alternate above /
+# below; more rows = taller canvas, which the wrap scrolls vertically.
+AXIS_Y = 380
 CARD_W = 188
 CARD_H = 96
 MIN_CANVAS_WIDTH = 1400
-# Margin large enough that the leftmost card (center at MARGIN_X) doesn't clip
-# its left edge; card is 188px wide so margin >= 100 keeps the card fully inside.
 MARGIN_X = 110
 PIXELS_PER_DAY_TARGET = 5.2
 MAX_CANVAS_WIDTH = 14000
 
-# Tops chosen so the card-bottom → axis connector is visible (~80px) and cards
-# never overlap vertically when stacked. Two rows above / two below.
+# (top_px, anchor_side). Add more pairs here to raise the stacking ceiling.
 ROWS = [
-    (100, "above_near"),   # bottom 196, axis at 280 (84px connector)
-    (0,   "above_far"),    # bottom 96
-    (340, "below_near"),
-    (440, "below_far"),
+    (272, "above_near"),   # bottom 368, axis at 380
+    (162, "above_mid"),    # bottom 258
+    (52,  "above_far"),    # bottom 148
+    (400, "below_near"),
+    (510, "below_mid"),
+    (620, "below_far"),
+    (730, "below_far2"),
+    (840, "below_far3"),
 ]
+CANVAS_HEIGHT = 940  # enough to contain all 8 rows
 
 
 STAGE_COLORS = {
@@ -363,7 +366,7 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None):
         children.append(html.Div(className="timeline-tick",
                                   style={"left": f"{x}px",
                                           "height": "18px" if is_major else "10px",
-                                          "top": "272px" if is_major else "276px"}))
+                                          "top": "372px" if is_major else "376px"}))
         children.append(html.Div(label, className="timeline-tick-label",
                                   style={"left": f"{x}px",
                                           "fontSize": "11px" if is_major else "10px",
@@ -424,6 +427,15 @@ def canvas_bounds(bills: pd.DataFrame, events: pd.DataFrame | None = None):
 
 
 def canvas_style_for(bills: pd.DataFrame, events: pd.DataFrame | None = None) -> dict:
-    # Canvas always fits the wrap (viewport) width; drag-to-zoom in JS reshapes
-    # the visible date range, not the canvas width.
-    return {"width": "100%"}
+    """Canvas width = density-fit (wide enough that cards don't overlap at
+    default zoom). Height = CANVAS_HEIGHT so the wrap can scroll vertically
+    if more stacks get added later."""
+    if bills is None or bills.empty:
+        return {"minWidth": f"{MIN_CANVAS_WIDTH}px", "height": f"{CANVAS_HEIGHT}px"}
+    cards = _collect_events(bills, events if events is not None else pd.DataFrame())
+    if not cards:
+        return {"minWidth": f"{MIN_CANVAS_WIDTH}px", "height": f"{CANVAS_HEIGHT}px"}
+    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=20)
+    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=20)
+    w = _canvas_width_for([c.event_date for c in cards], d_min, d_max)
+    return {"width": f"{w}px", "height": f"{CANVAS_HEIGHT}px"}

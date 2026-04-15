@@ -205,9 +205,10 @@ html, body {
 .timeline-wrap {
     position: relative;
     width: 100%;
-    overflow: hidden;              /* no horizontal scroll — zoom fits viewport */
+    max-height: 760px;
+    overflow: auto;                /* horizontal + vertical scroll */
     user-select: none;
-    cursor: grab;
+    cursor: default;
 }
 .timeline-wrap.drag-active { cursor: grabbing; }
 .timeline-wrap .zoom-select-rect {
@@ -221,10 +222,8 @@ html, body {
 }
 .timeline-canvas {
     position: relative;
-    height: 560px;
-    width: 100%;
-    min-width: 100%;
-    max-width: 100%;
+    /* Height auto-grows to fit rows; width is set per-render by canvas_style_for */
+    min-width: 1400px;
 }
 .timeline-hint {
     font-size: 11px;
@@ -235,19 +234,19 @@ html, body {
     position: absolute;
     left: 0;
     right: 0;
-    top: 280px;
+    top: 380px;
     height: 2px;
     background: var(--gray-500);
 }
 .timeline-tick {
     position: absolute;
-    top: 272px;
+    top: 372px;
     width: 2px;
     background: var(--gray-500);
 }
 .timeline-tick-label {
     position: absolute;
-    top: 294px;
+    top: 394px;
     transform: translateX(-50%);
     font-size: 10px;
     color: var(--gray-700);
@@ -550,6 +549,13 @@ html, body {
 .bill-legend-item .label:hover {
     background: var(--gray-100);
     color: var(--brand);
+}
+.bill-legend-item .legend-dir {
+    display: inline-block;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+    width: 14px;
 }
 .bill-legend-item.hidden .label { color: var(--gray-300); text-decoration: line-through; }
 .bill-legend-item.hidden .swatch { opacity: 0.25; }

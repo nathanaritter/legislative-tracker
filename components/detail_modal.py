@@ -197,7 +197,7 @@ def build_detail_modal():
                         rowData=[],
                         defaultColDef={"sortable": True, "resizable": True},
                         className="ag-theme-alpine",
-                        style={"height": "260px", "width": "100%"},
+                        style={"width": "100%"},
                         dashGridOptions={"domLayout": "autoHeight"},
                     ),
 

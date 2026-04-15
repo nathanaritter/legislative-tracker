@@ -21,6 +21,13 @@ _STATUS_COLOR = {
     "failed":     "#999999",
 }
 
+_DIRECTION_GLYPH = {
+    "favorable": ("▲", "#059669"),
+    "adverse":   ("▼", "#dc2626"),
+    "mixed":     ("◆", "#d97706"),
+    "neutral":   ("●", "#6b7280"),
+}
+
 
 @callback(
     Output("timeline-canvas", "children"),
@@ -52,6 +59,18 @@ def render(filters):
             group = STATUS_GROUP.get(row.get("current_status") or "introduced", "introduced")
             color = _STATUS_COLOR.get(group, "#6A4C93")
             label = f"{row.get('bill_number','')} — {row.get('title','')}"
+            direction = (row.get("impact_direction") or "").lower()
+            dir_glyph, dir_color = _DIRECTION_GLYPH.get(direction, ("", None))
+            glyph_el = (
+                html.Span(dir_glyph, className="legend-dir",
+                          style={"color": dir_color, "marginRight": "2px"},
+                          title={"favorable": "Favorable for CRE",
+                                 "adverse": "Adverse for CRE",
+                                 "mixed": "Mixed impact",
+                                 "neutral": "Neutral"}.get(direction, ""))
+                if dir_glyph else None
+            )
+            label_children = [glyph_el, label] if glyph_el is not None else [label]
             legend_items.append(html.Div(
                 [
                     html.Span(
@@ -62,7 +81,7 @@ def render(filters):
                         title="Click to hide / show",
                     ),
                     html.Span(
-                        label,
+                        label_children,
                         className="label",
                         title=label,
                         id={"type": "bill-legend-label", "bill_id": bill_id},
