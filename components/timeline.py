@@ -247,7 +247,7 @@ def build_timeline_card_area():
         [
             html.H5("Bill progression timeline", style={"margin": 0}),
             html.Span(
-                "Drag horizontally to zoom · double-click to reset",
+                "Drag horizontally to zoom · double-click to fit all",
                 className="timeline-hint",
             ),
         ],

@@ -171,22 +171,36 @@
         repack();
     }
 
-    function reset() {
+    // Fit-to-visible: compute the zoom factor that makes every visible card's
+    // bounding box fit in the viewport width, then setFactor to it. Used by
+    // double-click as a "fit all to screen" gesture.
+    function fitToVisible() {
         const c = canvas();
         const w = wrap();
         if (!c || !w) return;
         if (!snapshotIfNeeded()) return;
-        const baseW = parseFloat(c.dataset.baseW);
-        c.style.width = baseW + 'px';
-        c.querySelectorAll(ZOOMABLE).forEach(el => {
+        const visible = [...c.querySelectorAll('.bill-card')]
+            .filter(el => el.style.display !== 'none');
+        if (!visible.length) return;
+        let minCx = Infinity, maxCx = -Infinity;
+        visible.forEach(el => {
             const cx = parseFloat(el.dataset.baseCx);
-            if (isNaN(cx)) return;
-            const halfW = el.classList.contains('bill-card') ? CARD_W / 2 : 0;
-            el.style.left = (cx - halfW) + 'px';
+            if (!isNaN(cx)) {
+                minCx = Math.min(minCx, cx);
+                maxCx = Math.max(maxCx, cx);
+            }
         });
-        c.dataset.zoomFactor = '1';
-        w.scrollLeft = 0;
-        repack();
+        const viewportW = w.clientWidth;
+        // Total visible width at factor f: (maxCx - minCx)*f + CARD_W
+        // Want <= viewportW with a small padding so cards aren't flush to edges.
+        const PAD = 40;
+        const spread = Math.max(1, maxCx - minCx);
+        const f = (viewportW - CARD_W - PAD) / spread;
+        setFactor(f, null);
+        // Center the cards in the viewport by scrolling so the leftmost card
+        // sits just inside the left edge.
+        const newCardLeft = minCx * (parseFloat(c.dataset.zoomFactor) || 1) - CARD_W / 2;
+        w.scrollLeft = Math.max(0, newCardLeft - PAD / 2);
     }
 
     // ------------------------------------------------------------------
@@ -274,7 +288,7 @@
     function onDblClick(e) {
         if (!isInsideCanvas(e)) return;
         if (e.target.closest('.bill-card, button, a, input, .rc-slider')) return;
-        reset();
+        fitToVisible();
     }
 
     function onWheel(e) {
