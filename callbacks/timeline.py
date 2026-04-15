@@ -73,9 +73,9 @@ def render(filters):
             glyph_el = (
                 html.Span(dir_glyph, className="legend-dir",
                           style={"color": dir_color, "marginRight": "2px"},
-                          title={"favorable": "Favorable for CRE",
-                                 "adverse": "Adverse for CRE",
-                                 "mixed": "Mixed impact",
+                          title={"favorable": "Favorable for MF owners",
+                                 "adverse": "Adverse for MF owners",
+                                 "mixed": "Mixed impact for MF",
                                  "neutral": "Neutral"}.get(direction, ""))
                 if dir_glyph else None
             )

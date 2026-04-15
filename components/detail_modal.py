@@ -36,10 +36,13 @@ RISK_COMPONENTS = [
 
 
 DIRECTION_LABELS = {
-    "favorable": ("Favorable for CRE", "▲", "dir-favorable"),
-    "adverse":   ("Adverse for CRE",  "▼", "dir-adverse"),
-    "mixed":     ("Mixed impact",     "◆", "dir-mixed"),
-    "neutral":   ("Neutral",          "●", "dir-neutral"),
+    # Framed from the perspective of a multifamily owner-operator (5-year
+    # hold). Broader CRE context is covered in the AI rationale per
+    # component rather than in the top-line label.
+    "favorable": ("Favorable for MF owners", "▲", "dir-favorable"),
+    "adverse":   ("Adverse for MF owners",   "▼", "dir-adverse"),
+    "mixed":     ("Mixed impact for MF",     "◆", "dir-mixed"),
+    "neutral":   ("Neutral",                 "●", "dir-neutral"),
 }
 
 

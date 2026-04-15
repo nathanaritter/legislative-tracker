@@ -92,14 +92,20 @@
     // repack after legend hide/show.
     window.repackTimeline = repack;
 
+    // We snapshot the CENTER x of every zoomable element (not the bounding-box
+    // left). That way each element stays centered on the same canvas x across
+    // zoom levels regardless of how wide the element itself is. Cards (188 px)
+    // would otherwise drift away from their axis dots as the canvas stretches.
     function snapshotIfNeeded() {
         const c = canvas();
         if (!c) return false;
         if (!c.dataset.baseW) c.dataset.baseW = String(c.offsetWidth);
         c.querySelectorAll(ZOOMABLE).forEach(el => {
-            if (!el.dataset.baseLeft) {
+            if (!el.dataset.baseCx) {
                 const left = parseFloat(el.style.left);
-                if (!isNaN(left)) el.dataset.baseLeft = String(left);
+                if (isNaN(left)) return;
+                const halfW = el.classList.contains('bill-card') ? CARD_W / 2 : 0;
+                el.dataset.baseCx = String(left + halfW);
             }
         });
         return true;
@@ -130,8 +136,11 @@
 
         c.style.width = (baseW * factor) + 'px';
         c.querySelectorAll(ZOOMABLE).forEach(el => {
-            const base = parseFloat(el.dataset.baseLeft);
-            if (!isNaN(base)) el.style.left = (base * factor) + 'px';
+            const cx = parseFloat(el.dataset.baseCx);
+            if (isNaN(cx)) return;
+            const scaledCx = cx * factor;
+            const halfW = el.classList.contains('bill-card') ? CARD_W / 2 : 0;
+            el.style.left = (scaledCx - halfW) + 'px';
         });
         c.dataset.zoomFactor = String(factor);
 
@@ -151,8 +160,10 @@
         const baseW = parseFloat(c.dataset.baseW);
         c.style.width = baseW + 'px';
         c.querySelectorAll(ZOOMABLE).forEach(el => {
-            const base = parseFloat(el.dataset.baseLeft);
-            if (!isNaN(base)) el.style.left = base + 'px';
+            const cx = parseFloat(el.dataset.baseCx);
+            if (isNaN(cx)) return;
+            const halfW = el.classList.contains('bill-card') ? CARD_W / 2 : 0;
+            el.style.left = (cx - halfW) + 'px';
         });
         c.dataset.zoomFactor = '1';
         w.scrollLeft = 0;

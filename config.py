@@ -161,10 +161,11 @@ LEGEND = [
 
 # Direction legend — shown next to the status legend in the title bar so the
 # user knows what the ▲ ▼ ◆ glyphs on cards and in the right sidebar mean.
+# Framed from the MF owner-operator lens (not a developer).
 DIRECTION_LEGEND = [
-    ("Favorable for CRE", "▲", "#059669"),
-    ("Adverse for CRE",   "▼", "#dc2626"),
-    ("Mixed impact",      "◆", "#d97706"),
+    ("Favorable for MF owners", "▲", "#059669"),
+    ("Adverse for MF owners",   "▼", "#dc2626"),
+    ("Mixed impact",            "◆", "#d97706"),
 ]
 
 # Backwards-compatible alias used by a couple of older render paths.
