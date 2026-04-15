@@ -536,7 +536,14 @@ html, body {
 .Select-placeholder, .Select-value-label { font-size: 12px !important; }
 .filter-row { margin-bottom: 8px; }
 
-/* Dark-blue risk slider */
+/* Dark-blue risk slider. Remove rc-slider's default bottom padding so the
+   space below the slider matches the rest of the filter stack. */
+.brand-slider {
+    margin-bottom: 4px !important;
+}
+.brand-slider .rc-slider {
+    padding: 8px 0 4px 0 !important;
+}
 .brand-slider .rc-slider-track {
     background-color: var(--brand) !important;
     height: 6px !important;

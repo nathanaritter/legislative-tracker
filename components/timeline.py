@@ -235,11 +235,11 @@ def _risk_chip_inline(score, direction=None):
 def build_timeline_card_area():
     zoom_controls = html.Div(
         [
-            html.Span("Zoom", className="zoom-label"),
-            html.Button("−", id="zoom-out-btn", className="zoom-btn", n_clicks=0, title="Squish"),
+            html.Span("Zoom (Ctrl+scroll)", className="zoom-label"),
+            html.Button("−", id="zoom-out-btn", className="zoom-btn", n_clicks=0, title="Zoom out"),
             html.Span("100%", id="zoom-level-readout", className="zoom-level"),
-            html.Button("+", id="zoom-in-btn", className="zoom-btn", n_clicks=0, title="Expand"),
-            html.Button("Fit", id="zoom-fit-btn", className="zoom-btn", n_clicks=0, title="Reset zoom"),
+            html.Button("+", id="zoom-in-btn", className="zoom-btn", n_clicks=0, title="Zoom in"),
+            html.Button("Fit", id="zoom-fit-btn", className="zoom-btn", n_clicks=0, title="Reset"),
         ],
         className="zoom-controls",
     )

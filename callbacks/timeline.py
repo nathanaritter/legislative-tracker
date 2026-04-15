@@ -161,12 +161,42 @@ def change_zoom(_in, _out, _fit, current):
     trigger = ctx.triggered_id
     z = float(current or 1.0)
     if trigger == "zoom-in-btn":
-        z = min(8.0, z * 2.0)
+        z = min(16.0, z * 1.5)
     elif trigger == "zoom-out-btn":
-        z = max(0.2, z / 2.0)
+        z = max(0.2, z / 1.5)
     elif trigger == "zoom-fit-btn":
         z = 1.0
     return z, f"{int(round(z * 100))}%"
+
+
+# Ctrl + mousewheel on the timeline = native-feeling zoom. The JS simply
+# dispatches a click on the existing zoom-in/out button so the server-side
+# callback is the single source of truth for the zoom factor. Runs after every
+# re-render so the binding survives DOM updates.
+clientside_callback(
+    """
+    function(_children) {
+        const wrap = document.querySelector('.timeline-wrap');
+        if (!wrap || wrap.__wheelBound) return window.dash_clientside.no_update;
+        wrap.__wheelBound = true;
+        let last = 0;
+        wrap.addEventListener('wheel', (e) => {
+            if (!(e.ctrlKey || e.metaKey)) return;   // preserve vertical scroll
+            e.preventDefault();
+            const now = Date.now();
+            if (now - last < 40) return;
+            last = now;
+            const btnId = (e.deltaY < 0) ? 'zoom-in-btn' : 'zoom-out-btn';
+            const btn = document.getElementById(btnId);
+            if (btn) btn.click();
+        }, {passive: false});
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("zoom-store", "data", allow_duplicate=True),
+    Input("timeline-canvas", "children"),
+    prevent_initial_call=True,
+)
 
 
 # The Python toggle_hidden callback is replaced by the clientside_callback
