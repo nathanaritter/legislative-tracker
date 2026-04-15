@@ -270,6 +270,31 @@
         setFactor(next, pivot);
     }
 
+    // When Dash re-renders the timeline (filter / status change), the canvas
+    // gets new children. At that point `baseW` and every element's `baseCx`
+    // are stale — they reflect the previous filter's canvas width. Clear them
+    // so the next zoom interaction re-snapshots using the new layout.
+    function resetSnapshots() {
+        const c = canvas();
+        if (!c) return;
+        delete c.dataset.baseW;
+        delete c.dataset.zoomFactor;
+        c.querySelectorAll(ZOOMABLE).forEach(el => {
+            delete el.dataset.baseCx;
+        });
+    }
+
+    function watchReRenders() {
+        const c = canvas();
+        if (!c || c.__rerenderObserverAttached) return;
+        c.__rerenderObserverAttached = true;
+        // childList mutations fire only when Dash REPLACES the canvas
+        // children. Our own repack() / setFactor() only mutate style / attr,
+        // which don't trigger this observer. No infinite loop.
+        const obs = new MutationObserver(resetSnapshots);
+        obs.observe(c, {childList: true});
+    }
+
     function install() {
         if (window.__timelineZoomBound) return;
         window.__timelineZoomBound = true;
@@ -278,6 +303,12 @@
         document.addEventListener('mouseup', onMouseUp);
         document.addEventListener('dblclick', onDblClick);
         document.addEventListener('wheel', onWheel, {passive: false});
+        // Attach the re-render observer. If the canvas doesn't exist yet,
+        // retry until it does.
+        (function tryAttach() {
+            if (canvas()) { watchReRenders(); return; }
+            setTimeout(tryAttach, 200);
+        })();
     }
 
     if (document.readyState === 'loading') {
