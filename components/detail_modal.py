@@ -165,7 +165,8 @@ def build_votes_section(votes):
                 rowData=votes,
                 defaultColDef={"sortable": True, "resizable": True},
                 className="ag-theme-alpine",
-                style={"height": f"{max(90, 46 + 36 * len(votes))}px", "width": "100%"},
+                style={"width": "100%"},
+                dashGridOptions={"domLayout": "autoHeight"},
             ),
         ]
     )
@@ -196,7 +197,8 @@ def build_detail_modal():
                         rowData=[],
                         defaultColDef={"sortable": True, "resizable": True},
                         className="ag-theme-alpine",
-                        style={"height": "160px", "width": "100%"},
+                        style={"height": "260px", "width": "100%"},
+                        dashGridOptions={"domLayout": "autoHeight"},
                     ),
 
                     html.Div(id="detail-votes"),

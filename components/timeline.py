@@ -177,6 +177,7 @@ def _stage_card(card: EventCard, bill: dict, top: int, left: int) -> html.Div:
     stage_label = STAGE_LABELS.get(card.stage_group, card.stage_group.title())
     # Short date — "Mar 06 '25" — so it fits alongside the stage chip + risk chip.
     date_str = card.event_date.strftime("%b %d '%y")
+    iso_date = card.event_date.strftime("%Y-%m-%d")
 
     header_children = [
         html.Span(stage_label, className="stage-label"),
@@ -202,9 +203,10 @@ def _stage_card(card: EventCard, bill: dict, top: int, left: int) -> html.Div:
         children,
         className="bill-card",
         id={"type": "bill-card", "bill_id": bill["bill_id"], "event": card.raw_event_type,
-             "date": card.event_date.strftime("%Y-%m-%d")},
+             "date": iso_date},
         n_clicks=0,
         style={"top": f"{top}px", "left": f"{left}px"},
+        **{"data-event-date": iso_date, "data-bill-id": bill["bill_id"], "data-row": str(-1)},
     )
 
 
@@ -312,7 +314,8 @@ def _collect_events(bills: pd.DataFrame, events: pd.DataFrame) -> list[EventCard
     return cards
 
 
-def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoom: float = 1.0):
+def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None):
+    zoom = 1.0  # Server renders at 100%; assets/timeline_zoom.js handles any zoom
     if bills is None or bills.empty:
         return (
             [html.Div("No bills match the current filters.",
@@ -378,7 +381,8 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoo
         children.append(html.Div(
             className="timeline-dot",
             style={"left": f"{c.x_px}px", "top": f"{AXIS_Y}px", "background": color},
-            **{"data-bill-id": c.bill_id},
+            **{"data-bill-id": c.bill_id,
+               "data-event-date": c.event_date.strftime("%Y-%m-%d")},
         ))
         if anchor.startswith("above"):
             top = row_top + CARD_H
@@ -395,7 +399,8 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoo
                         "top": f"{y}px",
                         "height": f"{height}px",
                         "background": color},
-                **{"data-bill-id": c.bill_id},
+                **{"data-bill-id": c.bill_id,
+                   "data-event-date": c.event_date.strftime("%Y-%m-%d")},
             ))
 
     n_bills = len(set(c.bill_id for c in cards))
@@ -418,13 +423,7 @@ def canvas_bounds(bills: pd.DataFrame, events: pd.DataFrame | None = None):
     return d_min.strftime("%Y-%m-%d"), d_max.strftime("%Y-%m-%d")
 
 
-def canvas_style_for(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoom: float = 1.0) -> dict:
-    if bills is None or bills.empty:
-        return {"minWidth": f"{MIN_CANVAS_WIDTH}px"}
-    cards = _collect_events(bills, events if events is not None else pd.DataFrame())
-    if not cards:
-        return {"minWidth": f"{MIN_CANVAS_WIDTH}px"}
-    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=20)
-    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=20)
-    w = _canvas_width_for([c.event_date for c in cards], d_min, d_max, zoom=zoom)
-    return {"minWidth": f"{w}px", "width": f"{w}px"}
+def canvas_style_for(bills: pd.DataFrame, events: pd.DataFrame | None = None) -> dict:
+    # Canvas always fits the wrap (viewport) width; drag-to-zoom in JS reshapes
+    # the visible date range, not the canvas width.
+    return {"width": "100%"}

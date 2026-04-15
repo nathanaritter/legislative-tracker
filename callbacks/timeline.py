@@ -28,19 +28,17 @@ _STATUS_COLOR = {
     Output("timeline-meta", "children"),
     Output("bill-legend", "children"),
     Input("filters-store", "data"),
-    Input("zoom-store", "data"),
 )
-def render(filters, zoom):
+def render(filters):
     filters = filters or {}
-    zoom = float(zoom or 1.0)
     all_bills = filter_bills(filters)
 
     # Render ALL filtered bills — clientside JS will hide the ones flagged in
     # hidden-bills-store by toggling CSS `display: none`. This keeps the
     # expensive Python render off the click hot-path.
     events = get_events_for(all_bills["bill_id"].tolist()) if not all_bills.empty else None
-    children, meta = render_timeline(all_bills, events, zoom=zoom)
-    style = canvas_style_for(all_bills, events, zoom=zoom)
+    children, meta = render_timeline(all_bills, events)
+    style = canvas_style_for(all_bills, events)
 
     legend_items = [html.H5("Bills in view")]
     if all_bills.empty:
@@ -167,55 +165,8 @@ clientside_callback(
 )
 
 
-@callback(
-    Output("zoom-store", "data"),
-    Output("zoom-level-readout", "children"),
-    Input("zoom-in-btn", "n_clicks"),
-    Input("zoom-out-btn", "n_clicks"),
-    Input("zoom-fit-btn", "n_clicks"),
-    State("zoom-store", "data"),
-    prevent_initial_call=True,
-)
-def change_zoom(_in, _out, _fit, current):
-    trigger = ctx.triggered_id
-    z = float(current or 1.0)
-    if trigger == "zoom-in-btn":
-        z = min(16.0, z * 1.5)
-    elif trigger == "zoom-out-btn":
-        z = max(0.2, z / 1.5)
-    elif trigger == "zoom-fit-btn":
-        z = 1.0
-    return z, f"{int(round(z * 100))}%"
-
-
-# Ctrl + mousewheel on the timeline = native-feeling zoom. The JS simply
-# dispatches a click on the existing zoom-in/out button so the server-side
-# callback is the single source of truth for the zoom factor. Runs after every
-# re-render so the binding survives DOM updates.
-clientside_callback(
-    """
-    function(_children) {
-        const wrap = document.querySelector('.timeline-wrap');
-        if (!wrap || wrap.__wheelBound) return window.dash_clientside.no_update;
-        wrap.__wheelBound = true;
-        let last = 0;
-        wrap.addEventListener('wheel', (e) => {
-            if (!(e.ctrlKey || e.metaKey)) return;   // preserve vertical scroll
-            e.preventDefault();
-            const now = Date.now();
-            if (now - last < 40) return;
-            last = now;
-            const btnId = (e.deltaY < 0) ? 'zoom-in-btn' : 'zoom-out-btn';
-            const btn = document.getElementById(btnId);
-            if (btn) btn.click();
-        }, {passive: false});
-        return window.dash_clientside.no_update;
-    }
-    """,
-    Output("zoom-store", "data", allow_duplicate=True),
-    Input("timeline-canvas", "children"),
-    prevent_initial_call=True,
-)
+# Zoom is handled entirely by assets/timeline_zoom.js — pure clientside drag/
+# wheel/dblclick, no server callback.
 
 
 # The Python toggle_hidden callback is replaced by the clientside_callback

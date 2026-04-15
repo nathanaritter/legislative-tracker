@@ -17,7 +17,6 @@ def build_layout():
             dcc.Store(id="filters-store", storage_type="session", data={}),
             dcc.Store(id="selected-bill-store", storage_type="memory", data=None),
             dcc.Store(id="hidden-bills-store", storage_type="session", data=[]),
-            dcc.Store(id="zoom-store", storage_type="session", data=1.0),
 
             build_navbar(),
             html.Div(
