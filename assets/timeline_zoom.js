@@ -122,10 +122,29 @@
         if (!snapshotIfNeeded()) return;
         const prevFactor = getFactor();
         const baseW = parseFloat(c.dataset.baseW);
-        // Zoom-out is capped at viewport-fit so the whole filtered timeline
-        // is always visible at max zoom-out (never shrinks below viewport).
-        const viewportW = w.clientWidth;
-        const minFactor = Math.min(1, viewportW / baseW);
+        // Min factor = smallest zoom-out that still keeps every visible card's
+        // left AND right edge within the canvas. That lets 2 bills cluster
+        // tightly together in a narrow canvas while 13 bills still spread out.
+        const visibleCards = [...c.querySelectorAll('.bill-card')]
+            .filter(el => el.style.display !== 'none');
+        let minFactor = 0.1;
+        if (visibleCards.length) {
+            let minCx = Infinity, maxCx = -Infinity;
+            visibleCards.forEach(el => {
+                const cx = parseFloat(el.dataset.baseCx);
+                if (!isNaN(cx)) {
+                    minCx = Math.min(minCx, cx);
+                    maxCx = Math.max(maxCx, cx);
+                }
+            });
+            // Card left edge ≥ 0 → cx*f ≥ CARD_W/2 → f ≥ (CARD_W/2) / minCx
+            // Card right edge ≤ baseW*f → cx*f + CARD_W/2 ≤ baseW*f
+            //   → f ≥ (CARD_W/2) / (baseW - maxCx)
+            const half = CARD_W / 2;
+            const fLeft = half / Math.max(1, minCx);
+            const fRight = half / Math.max(1, baseW - maxCx);
+            minFactor = Math.max(0.1, fLeft, fRight);
+        }
         factor = Math.max(minFactor, Math.min(12, factor));
 
         // Keep the pivot point (cursor or drag midpoint) stable on screen.
