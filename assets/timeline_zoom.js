@@ -114,9 +114,13 @@
         const w = wrap();
         if (!c || !w) return;
         if (!snapshotIfNeeded()) return;
-        factor = Math.max(0.25, Math.min(12, factor));
         const prevFactor = getFactor();
         const baseW = parseFloat(c.dataset.baseW);
+        // Zoom-out is capped at viewport-fit so the whole filtered timeline
+        // is always visible at max zoom-out (never shrinks below viewport).
+        const viewportW = w.clientWidth;
+        const minFactor = Math.min(1, viewportW / baseW);
+        factor = Math.max(minFactor, Math.min(12, factor));
 
         // Keep the pivot point (cursor or drag midpoint) stable on screen.
         let pivotCanvasX = null;

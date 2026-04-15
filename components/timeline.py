@@ -38,16 +38,16 @@ MAX_CANVAS_WIDTH = 14000
 # above/below makes them fill symmetrically instead of piling all cards above
 # the axis before ever using the below-axis rows.
 ROWS = [
-    (272, "above_near"),   # bottom 368, axis at 380
-    (400, "below_near"),
+    (272, "above_near"),   # bottom 368, axis at 380, tick labels at 394-410
+    (420, "below_near"),   # leaves 10px clearance below the tick-label band
     (162, "above_mid"),
-    (510, "below_mid"),
+    (530, "below_mid"),
     (52,  "above_far"),
-    (620, "below_far"),
-    (730, "below_far2"),
-    (840, "below_far3"),
+    (640, "below_far"),
+    (750, "below_far2"),
+    (860, "below_far3"),
 ]
-CANVAS_HEIGHT = 940  # enough to contain all 8 rows
+CANVAS_HEIGHT = 960
 
 
 STAGE_COLORS = {

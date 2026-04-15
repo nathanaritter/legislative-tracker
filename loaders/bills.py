@@ -290,10 +290,10 @@ def filter_bills(filters: dict) -> pd.DataFrame:
     if states:
         bills = bills[bills["state"].isin(states)]
 
-    statuses = filters.get("statuses") or []
-    if statuses:
-        # Match the user's consolidated status bucket against each row's mapped group.
-        bills = bills[bills["current_status"].map(STATUS_GROUP).isin(statuses)]
+    # Status filter is applied at event-level, not bill-level — see
+    # callbacks/timeline.py render(). Bills stay in the frame as long as at
+    # least one of their events matches the selected statuses; the timeline
+    # then only emits cards for the matching stage-group events.
 
     subjects = filters.get("subjects") or []
     if subjects:

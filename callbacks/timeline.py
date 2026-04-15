@@ -40,10 +40,19 @@ def render(filters):
     filters = filters or {}
     all_bills = filter_bills(filters)
 
-    # Render ALL filtered bills — clientside JS will hide the ones flagged in
-    # hidden-bills-store by toggling CSS `display: none`. This keeps the
-    # expensive Python render off the click hot-path.
+    # Status filter is applied here at the event level — picking "In Effect"
+    # should show the "In Effect" cards only, not the full intro/passed chain
+    # for every bill that happens to be enacted.
     events = get_events_for(all_bills["bill_id"].tolist()) if not all_bills.empty else None
+    statuses = filters.get("statuses") or []
+    if statuses and events is not None and not events.empty:
+        kept = events["event_type"].map(STATUS_GROUP).isin(statuses)
+        events = events[kept].reset_index(drop=True)
+        # Drop bills that don't have any matching event so they vanish from
+        # the right-side legend too.
+        keep_bill_ids = set(events["bill_id"].tolist())
+        all_bills = all_bills[all_bills["bill_id"].isin(keep_bill_ids)].reset_index(drop=True)
+
     children, meta = render_timeline(all_bills, events)
     style = canvas_style_for(all_bills, events)
 
