@@ -171,6 +171,17 @@
         repack();
     }
 
+    // Reset: back to 100% of the server's density-fit canvas width, scroll
+    // to the left edge. Used by the Reset View button.
+    function reset() {
+        const c = canvas();
+        const w = wrap();
+        if (!c || !w) return;
+        if (!snapshotIfNeeded()) return;
+        setFactor(1.0, null);
+        w.scrollLeft = 0;
+    }
+
     // Fit-to-visible: compute the zoom factor that makes every visible card's
     // bounding box fit in the viewport width, then setFactor to it. Used by
     // double-click as a "fit all to screen" gesture.
@@ -336,6 +347,14 @@
         document.addEventListener('mouseup', onMouseUp);
         document.addEventListener('dblclick', onDblClick);
         document.addEventListener('wheel', onWheel, {passive: false});
+        // Reset View button: delegate click via document since the button
+        // sits in a card header that's server-rendered once.
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('#timeline-reset-btn');
+            if (!btn) return;
+            e.preventDefault();
+            reset();
+        });
         // Attach the re-render observer. If the canvas doesn't exist yet,
         // retry until it does.
         (function tryAttach() {

@@ -250,9 +250,23 @@ def build_timeline_card_area():
     header_row = html.Div(
         [
             html.H5("Bill progression timeline", style={"margin": 0}),
-            html.Span(
-                "Drag horizontally to zoom · double-click to fit all",
-                className="timeline-hint",
+            html.Div(
+                [
+                    html.Span(
+                        "Drag horizontally to zoom · double-click to fit all",
+                        className="timeline-hint",
+                        style={"marginRight": "10px"},
+                    ),
+                    # Clientside reset button — handled by assets/timeline_zoom.js.
+                    html.Button(
+                        [html.I(className="bi bi-arrow-counterclockwise",
+                                 style={"marginRight": "4px"}), "Reset view"],
+                        id="timeline-reset-btn",
+                        className="zoom-btn",
+                        title="Reset zoom to default",
+                    ),
+                ],
+                style={"display": "flex", "alignItems": "center"},
             ),
         ],
         style={"display": "flex", "alignItems": "center", "justifyContent": "space-between",
