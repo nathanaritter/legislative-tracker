@@ -160,6 +160,13 @@
             const scaledCx = cx * factor;
             const halfW = el.classList.contains('bill-card') ? CARD_W / 2 : 0;
             el.style.left = (scaledCx - halfW) + 'px';
+            // Safeguard: unhide tick marks + labels unconditionally. Bills get
+            // hidden via the legend (data-bill-id check elsewhere), but ticks
+            // should never end up display:none after a zoom.
+            if (el.classList.contains('timeline-tick') ||
+                el.classList.contains('timeline-tick-label')) {
+                el.style.display = '';
+            }
         });
         c.dataset.zoomFactor = String(factor);
 
