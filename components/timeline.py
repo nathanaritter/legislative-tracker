@@ -29,7 +29,9 @@ AXIS_Y = 280
 CARD_W = 188
 CARD_H = 96
 MIN_CANVAS_WIDTH = 1400
-MARGIN_X = 30
+# Margin large enough that the leftmost card (center at MARGIN_X) doesn't clip
+# its left edge; card is 188px wide so margin >= 100 keeps the card fully inside.
+MARGIN_X = 110
 PIXELS_PER_DAY_TARGET = 5.2
 MAX_CANVAS_WIDTH = 14000
 
@@ -87,16 +89,15 @@ def _pack_rows(cards, min_gap=CARD_W + 10):
     return [c for c in cards if c.row >= 0], dropped
 
 
-def _canvas_width_for(event_dates, d_min, d_max, min_gap=CARD_W + 10, rows=len(ROWS), zoom=1.0):
+def _density_min_width(event_dates, d_min, d_max, min_gap=CARD_W + 10, rows=len(ROWS)):
+    """Minimum canvas width such that the densest min_gap-wide window holds no
+    more cards than we have rows. Used as a floor when zooming out."""
     total_days = max(1, (d_max - d_min).days)
-    base_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET * zoom))
-    if not event_dates:
-        return base_w
-    dates = sorted(event_dates)
-    if len(dates) <= rows:
-        return base_w
-    canvas_w = base_w
-    for _ in range(6):
+    canvas_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET))
+    dates = sorted(event_dates) if event_dates else []
+    if not dates or len(dates) <= rows:
+        return canvas_w
+    for _ in range(8):
         usable = canvas_w - 2 * MARGIN_X
         px_per_day = usable / total_days
         window_days = min_gap / px_per_day if px_per_day else total_days
@@ -109,11 +110,26 @@ def _canvas_width_for(event_dates, d_min, d_max, min_gap=CARD_W + 10, rows=len(R
                 j += 1
             max_cluster = max(max_cluster, j - i)
         if max_cluster <= rows:
-            return min(canvas_w, MAX_CANVAS_WIDTH)
+            return canvas_w
         canvas_w = int(canvas_w * (max_cluster / rows))
-        if canvas_w >= MAX_CANVAS_WIDTH:
-            return MAX_CANVAS_WIDTH
-    return min(canvas_w, MAX_CANVAS_WIDTH)
+    return canvas_w
+
+
+def _canvas_width_for(event_dates, d_min, d_max, min_gap=CARD_W + 10, rows=len(ROWS), zoom=1.0):
+    """Canvas width honoring (a) the density floor (zoom-out can't make cards
+    overlap beyond the row budget) and (b) the caller-supplied zoom multiplier.
+
+    zoom > 1: canvas grows proportionally (zoom-in).
+    zoom < 1: canvas shrinks but not below the density floor (zoom-out stops
+               once the densest window already fills all rows).
+    """
+    total_days = max(1, (d_max - d_min).days)
+    base_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET))
+    density_min = _density_min_width(event_dates, d_min, d_max, min_gap=min_gap, rows=rows)
+    # Density floor always applies so zoom-out can't drop cards; zoom-in expands
+    # beyond the floor freely up to the hard ceiling.
+    final = max(int(base_w * zoom), density_min)
+    return int(min(final, MAX_CANVAS_WIDTH * 4))
 
 
 def _tick_positions(d_min, d_max, canvas_w):
@@ -218,9 +234,10 @@ def build_timeline_card_area():
     zoom_controls = html.Div(
         [
             html.Span("Zoom", className="zoom-label"),
-            html.Button("−", id="zoom-out-btn", className="zoom-btn", n_clicks=0, title="Squish (less pixels/day)"),
+            html.Button("−", id="zoom-out-btn", className="zoom-btn", n_clicks=0, title="Squish"),
+            html.Span("100%", id="zoom-level-readout", className="zoom-level"),
+            html.Button("+", id="zoom-in-btn", className="zoom-btn", n_clicks=0, title="Expand"),
             html.Button("Fit", id="zoom-fit-btn", className="zoom-btn", n_clicks=0, title="Reset zoom"),
-            html.Button("+", id="zoom-in-btn", className="zoom-btn", n_clicks=0, title="Expand (more pixels/day)"),
         ],
         className="zoom-controls",
     )

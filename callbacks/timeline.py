@@ -69,6 +69,7 @@ def render(filters, hidden_list, zoom):
 
 @callback(
     Output("zoom-store", "data"),
+    Output("zoom-level-readout", "children"),
     Input("zoom-in-btn", "n_clicks"),
     Input("zoom-out-btn", "n_clicks"),
     Input("zoom-fit-btn", "n_clicks"),
@@ -79,12 +80,12 @@ def change_zoom(_in, _out, _fit, current):
     trigger = ctx.triggered_id
     z = float(current or 1.0)
     if trigger == "zoom-in-btn":
-        z = min(4.0, z * 1.35)
+        z = min(8.0, z * 2.0)
     elif trigger == "zoom-out-btn":
-        z = max(0.25, z / 1.35)
+        z = max(0.2, z / 2.0)
     elif trigger == "zoom-fit-btn":
         z = 1.0
-    return z
+    return z, f"{int(round(z * 100))}%"
 
 
 @callback(

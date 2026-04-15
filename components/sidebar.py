@@ -88,6 +88,7 @@ def build_sidebar():
                         display_format="MMM D, YYYY",
                         placeholder="Start",
                         className="brand-datepicker",
+                        with_portal=True,
                     ),
                     dcc.DatePickerSingle(
                         id="date-filter-end",
@@ -95,6 +96,7 @@ def build_sidebar():
                         display_format="MMM D, YYYY",
                         placeholder="End",
                         className="brand-datepicker",
+                        with_portal=True,
                     ),
                 ],
                 className="date-range-row",
