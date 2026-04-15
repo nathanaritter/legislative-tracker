@@ -16,7 +16,10 @@ def build_layout():
         [
             dcc.Store(id="filters-store", storage_type="session", data={}),
             dcc.Store(id="selected-bill-store", storage_type="memory", data=None),
-            dcc.Store(id="hidden-bills-store", storage_type="session", data=[]),
+            # Memory storage — hidden-bills and any transient view state should
+            # clear on hard refresh so the user doesn't get stuck with stale
+            # state they can't see.
+            dcc.Store(id="hidden-bills-store", storage_type="memory", data=[]),
 
             build_navbar(),
             html.Div(

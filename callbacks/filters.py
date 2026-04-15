@@ -70,9 +70,13 @@ def collect_filters(state, counties, cities, statuses, subjects, risk, start, en
     Output("risk-filter", "value"),
     Output("date-filter-start", "value"),
     Output("date-filter-end", "value"),
+    Output("hidden-bills-store", "data", allow_duplicate=True),
     Input("reset-filters-btn", "n_clicks"),
     prevent_initial_call=True,
 )
 def reset_filters(_n):
     today = date.today()
-    return None, [], [], [0, 100], (today - timedelta(days=365 * 3)).isoformat(), today.isoformat()
+    return (None, [], [], [0, 100],
+            (today - timedelta(days=365 * 3)).isoformat(),
+            today.isoformat(),
+            [])  # clear hidden bills too so all bills become visible again
