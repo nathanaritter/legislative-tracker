@@ -232,7 +232,7 @@ html, body {
     /* Width is set inline by canvas_style_for (server) and overridden by
        timeline_zoom.js when the user zooms. NO min-width — otherwise zoom-out
        with a small bill set can't shrink the canvas below 1400px. */
-    height: 980px;
+    height: 1420px;
 }
 .timeline-hint {
     font-size: 11px;

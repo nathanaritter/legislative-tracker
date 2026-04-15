@@ -40,17 +40,21 @@ MAX_CANVAS_WIDTH = 14000
 ROWS = [
     # Tick marks occupy y=372–390 (axis at 380), tick labels y=394–412. Cards
     # should never enter either band, so above_near bottom is ≤ 366 and
-    # below_near top is ≥ 420.
-    (250, "above_near"),   # bottom 346 → 26px of clear space above the axis
-    (440, "below_near"),   # 30px below the tick-label band
+    # below_near top is ≥ 420. Row height = 110px (96 card + 14 gap) per slot.
+    (250, "above_near"),
+    (440, "below_near"),
     (140, "above_mid"),
     (550, "below_mid"),
     (30,  "above_far"),
-    (660, "below_far"),
+    (660, "below_far1"),
     (770, "below_far2"),
     (880, "below_far3"),
+    (990,  "below_far4"),
+    (1100, "below_far5"),
+    (1210, "below_far6"),
+    (1320, "below_far7"),
 ]
-CANVAS_HEIGHT = 980
+CANVAS_HEIGHT = 1420
 
 
 STAGE_COLORS = {
