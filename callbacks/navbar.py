@@ -1,61 +1,47 @@
 """
-Four navbar pills matching analytics-workbench exactly (same icons, same
-label format): bill count, stage-event count, last-update timestamp with
-HH:MM, and an adverse-bills status pill that flips red when > 0.
+Three navbar pills per user spec: bills scanned, CRE-relevant bills kept,
+last data update timestamp. No adverse/status pill.
 """
-
-from datetime import datetime
 
 from dash import Input, Output, callback, html
 
-from loaders.bills import filter_bills, get_events_for
+from loaders.bills import load_bills
 
 
 @callback(
     Output("navbar-metadata", "children"),
     Input("filters-store", "data"),
 )
-def populate_navbar(filters):
-    bills = filter_bills(filters or {})
-    n_bills = len(bills)
+def populate_navbar(_filters):
+    # The pills reflect raw data ingest, not the current user filter — the user
+    # wants to see pipeline health regardless of what they're currently viewing.
+    bills = load_bills()
+    n_scanned = len(bills) if bills is not None else 0
 
-    events = get_events_for(bills["bill_id"].tolist()) if not bills.empty else None
-    n_events = len(events) if events is not None else 0
+    if bills is None or bills.empty or "cre_relevant" not in bills.columns:
+        n_kept = 0
+    else:
+        n_kept = int(bills["cre_relevant"].fillna(False).astype(bool).sum())
 
-    if not bills.empty and "last_action_date" in bills.columns:
+    last_str = "—"
+    if bills is not None and not bills.empty and "last_action_date" in bills.columns:
         try:
             last = bills["last_action_date"].max()
-            last_str = (last.strftime("%Y-%m-%d %H:%M")
-                        if hasattr(last, "strftime") else str(last)[:16])
+            last_str = last.strftime("%Y-%m-%d %H:%M") if hasattr(last, "strftime") else str(last)[:16]
         except Exception:
-            last_str = "—"
-    else:
-        last_str = "—"
-
-    adverse = 0
-    favorable = 0
-    if not bills.empty and "impact_direction" in bills.columns:
-        adverse = int((bills["impact_direction"] == "adverse").sum())
-        favorable = int((bills["impact_direction"] == "favorable").sum())
-
-    status_class = "meta-pill meta-pill--error" if adverse else "meta-pill"
-    status_label = f"{adverse}/{n_bills} adverse" if n_bills else "0 bills"
+            pass
 
     return [
         html.Span(
-            [html.I(className="bi bi-database me-1"), f"{n_bills} bills"],
+            [html.I(className="bi bi-database me-1"), f"{n_scanned} bills scanned"],
             className="meta-pill",
         ),
         html.Span(
-            [html.I(className="bi bi-graph-up me-1"), f"{n_events} stage events"],
+            [html.I(className="bi bi-funnel me-1"), f"{n_kept} CRE-relevant"],
             className="meta-pill",
         ),
         html.Span(
             [html.I(className="bi bi-clock me-1"), f"Last update: {last_str}"],
             className="meta-pill",
-        ),
-        html.Span(
-            [html.I(className="bi bi-check2-circle me-1"), status_label],
-            className=status_class,
         ),
     ]

@@ -24,18 +24,15 @@ app = Dash(
     update_title=None,
 )
 
-# Use the Lucide "gavel" icon (MIT-licensed, pre-designed by the Lucide team)
-# as the favicon. The SVG is scaled crisply by the browser at any size. A
-# small PNG fallback covers the handful of legacy browsers without SVG
-# favicon support. Cache-bust via version query string so the user sees the
-# new file immediately after upgrades.
+# Favicon is the Lucide.dev "gavel" icon (MIT-licensed, pre-designed). The
+# SVG is served directly and every modern browser renders it crisply at any
+# size. No raster fallback — keeps the repo free of any hand-drawn bitmaps.
 app.index_string = """<!DOCTYPE html>
 <html>
     <head>
         {%metas%}
         <title>{%title%}</title>
-        <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=2">
-        <link rel="alternate icon" href="/assets/favicon.png?v=2">
+        <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
         {%css%}
     </head>
     <body>

@@ -72,31 +72,41 @@ def build_sidebar():
             html.H6("Risk score"),
             dcc.RangeSlider(
                 id="risk-filter",
-                min=0, max=100, step=5,
+                min=0, max=100, step=1,
                 value=[0, 100],
-                marks={0: "0", 100: "100"},
-                tooltip={"placement": "bottom", "always_visible": True},
+                marks=None,
+                tooltip={"placement": "bottom", "always_visible": False},
                 className="filter-row brand-slider",
             ),
 
             html.H6("Date range"),
             html.Div(
                 [
-                    dcc.DatePickerSingle(
-                        id="date-filter-start",
-                        date=default_start,
-                        display_format="MMM D, YYYY",
-                        placeholder="Start",
-                        className="brand-datepicker",
-                        with_portal=True,
+                    html.Div(
+                        [
+                            html.Div("Start", className="date-label"),
+                            dcc.DatePickerSingle(
+                                id="date-filter-start",
+                                date=default_start,
+                                display_format="MMM D, YYYY",
+                                placeholder="Start",
+                                className="brand-datepicker",
+                                with_portal=True,
+                            ),
+                        ]
                     ),
-                    dcc.DatePickerSingle(
-                        id="date-filter-end",
-                        date=today,
-                        display_format="MMM D, YYYY",
-                        placeholder="End",
-                        className="brand-datepicker",
-                        with_portal=True,
+                    html.Div(
+                        [
+                            html.Div("End", className="date-label"),
+                            dcc.DatePickerSingle(
+                                id="date-filter-end",
+                                date=today,
+                                display_format="MMM D, YYYY",
+                                placeholder="End",
+                                className="brand-datepicker",
+                                with_portal=True,
+                            ),
+                        ]
                     ),
                 ],
                 className="date-range-row",

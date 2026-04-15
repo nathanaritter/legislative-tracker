@@ -572,12 +572,28 @@ html, body {
 }
 .brand-slider .rc-slider-tooltip-arrow { border-top-color: var(--brand) !important; }
 
-/* Two DatePickerSingle side by side for the start/end range */
+/* Start / end date inputs stacked vertically so neither spills past the sidebar.
+   Labels above each help the user see which is which. */
 .date-range-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 6px;
     margin-bottom: 8px;
+}
+.date-range-row .date-label {
+    font-size: 10px;
+    color: var(--gray-500);
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+/* Portal-mounted calendar sits above timeline cards and the topnav. */
+.DayPicker_transitionContainer,
+.SingleDatePicker_picker,
+.DateRangePicker_picker {
+    z-index: 5000 !important;
 }
 
 /* Date picker — tighter, brand-colored focus */
