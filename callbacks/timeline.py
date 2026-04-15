@@ -185,6 +185,15 @@ clientside_callback(
                 const did = el.getAttribute('data-bill-id');
                 if (did) el.style.display = set.has(did) ? 'none' : '';
             });
+        // Dash re-rendered the canvas — invalidate stale zoom snapshots so
+        // the next zoom reads the new (filtered) canvas width.
+        const _c = document.querySelector('#timeline-canvas');
+        if (_c) {
+            delete _c.dataset.baseW;
+            delete _c.dataset.zoomFactor;
+            _c.querySelectorAll('.bill-card, .timeline-dot, .timeline-connector, .timeline-tick, .timeline-tick-label')
+                .forEach(el => { delete el.dataset.baseCx; });
+        }
         if (typeof window.repackTimeline === 'function') window.repackTimeline();
         return window.dash_clientside.no_update;
     }
