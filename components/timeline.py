@@ -33,24 +33,24 @@ from config import STATUS_COLOR, GRAY_500
 
 
 # --- Layout parameters (keep in sync with styles.css .timeline-canvas etc.) ---
-CANVAS_HEIGHT = 820
-AXIS_Y = 400
+CANVAS_HEIGHT = 1010
+AXIS_Y = 505
 CARD_W = 210
-CARD_H = 150
+CARD_H = 156
 ROW_GAP = 10
-# Six stacking rows — three above, three below.
-# (top_px, anchor_side). Height is always CARD_H.
+# Six stacking rows — three above, three below. Card bottom must clear the axis.
 ROWS = [
-    (10,  "above_far"),
-    (170, "above_mid"),
-    (330, "above_near"),
-    (420, "below_near"),
-    (580, "below_mid"),
-    (740, "below_far"),
+    (10,  "above_far"),    # bottom 166
+    (176, "above_mid"),    # bottom 332
+    (342, "above_near"),   # bottom 498 (axis at 505)
+    (525, "below_near"),   # bottom 681
+    (691, "below_mid"),    # bottom 847
+    (857, "below_far"),    # bottom 1013
 ]
 MIN_CANVAS_WIDTH = 1400
 MARGIN_X = 36
 PIXELS_PER_DAY_TARGET = 5.2
+MAX_CANVAS_WIDTH = 12000
 
 
 @dataclass
@@ -90,12 +90,16 @@ def _summary_to_bullets(summary: str, max_bullets: int = 3, max_chars: int = 110
     return cleaned
 
 
-def _pack_rows(bills: pd.DataFrame, x_px_by_id: dict[str, int], min_gap: int = CARD_W + 12) -> list[Placement]:
+def _pack_rows(bills: pd.DataFrame, x_px_by_id: dict[str, int], min_gap: int = CARD_W + 12) -> tuple[list[Placement], int]:
     """Greedy row assignment: for each bill (sorted by date), place in the first row
     whose last-placed card ends ≥ min_gap before this bill's x.
+
+    Bills that don't fit (canvas too narrow for the cluster) are dropped and the count
+    of drops is returned so the caller can surface a hint in the meta line.
     """
     placements: list[Placement] = []
     row_last_x: list[int] = [-10_000] * len(ROWS)
+    dropped = 0
     for _, row in bills.iterrows():
         bill_id = row["bill_id"]
         x = x_px_by_id[bill_id]
@@ -105,11 +109,55 @@ def _pack_rows(bills: pd.DataFrame, x_px_by_id: dict[str, int], min_gap: int = C
                 chosen = idx
                 break
         if chosen is None:
-            # Last resort: place in the row with the oldest last-placed x
-            chosen = min(range(len(row_last_x)), key=lambda i: row_last_x[i])
+            dropped += 1
+            continue
         row_last_x[chosen] = x
         placements.append(Placement(bill_id=bill_id, x_px=x, row=chosen))
-    return placements
+    return placements, dropped
+
+
+def _canvas_width_for(bills: pd.DataFrame, d_min: pd.Timestamp, d_max: pd.Timestamp,
+                     min_gap: int = CARD_W + 12, rows: int = len(ROWS)) -> int:
+    """Pick a canvas width that guarantees no bill cluster exceeds the row budget.
+
+    If the densest `min_gap`-wide window holds ≤ rows bills, baseline width stands.
+    Otherwise scale up so the densest window holds exactly `rows` bills.
+    """
+    total_days = max(1, (d_max - d_min).days)
+    base_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET))
+
+    if bills is None or bills.empty:
+        return base_w
+
+    dates = bills["_primary_date"].sort_values().reset_index(drop=True)
+    if len(dates) <= rows:
+        return base_w
+
+    # Iterate: widening the canvas shrinks window_days, which can change max_cluster,
+    # so re-run the density check up to a few times until it stabilizes or hits cap.
+    canvas_w = base_w
+    for _ in range(6):
+        usable_w = canvas_w - 2 * MARGIN_X
+        px_per_day = usable_w / total_days
+        window_days = (min_gap / px_per_day) if px_per_day > 0 else total_days
+
+        max_cluster = 1
+        j = 0
+        for i in range(len(dates)):
+            if j < i:
+                j = i
+            while j < len(dates) and (dates[j] - dates[i]).days < window_days:
+                j += 1
+            max_cluster = max(max_cluster, j - i)
+
+        if max_cluster <= rows:
+            return min(canvas_w, MAX_CANVAS_WIDTH)
+
+        canvas_w = int(canvas_w * (max_cluster / rows))
+        if canvas_w >= MAX_CANVAS_WIDTH:
+            return MAX_CANVAS_WIDTH
+
+    return min(canvas_w, MAX_CANVAS_WIDTH)
 
 
 def _tick_positions(d_min: pd.Timestamp, d_max: pd.Timestamp, canvas_w: int) -> list[tuple[str, int, bool]]:
@@ -253,7 +301,7 @@ def render_timeline(bills: pd.DataFrame) -> tuple[list, str]:
     d_max = d_max + pd.Timedelta(days=20)
     total_days = max(1, (d_max - d_min).days)
 
-    canvas_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET))
+    canvas_w = _canvas_width_for(bills, d_min, d_max)
     usable_w = canvas_w - 2 * MARGIN_X
 
     x_px_by_id: dict[str, int] = {}
@@ -261,7 +309,7 @@ def render_timeline(bills: pd.DataFrame) -> tuple[list, str]:
         frac = (row["_primary_date"] - d_min).days / total_days
         x_px_by_id[row["bill_id"]] = MARGIN_X + int(frac * usable_w)
 
-    placements = _pack_rows(bills, x_px_by_id)
+    placements, dropped = _pack_rows(bills, x_px_by_id)
 
     children: list = []
 
@@ -274,7 +322,7 @@ def render_timeline(bills: pd.DataFrame) -> tuple[list, str]:
         children.append(html.Div(className="timeline-tick",
                                   style={"left": f"{x}px",
                                           "height": "18px" if is_major else "10px",
-                                          "top": "392px" if is_major else "396px"}))
+                                          "top": "497px" if is_major else "501px"}))
         children.append(html.Div(label, className="timeline-tick-label",
                                   style={"left": f"{x}px",
                                           "fontSize": "11px" if is_major else "10px",
@@ -313,18 +361,23 @@ def render_timeline(bills: pd.DataFrame) -> tuple[list, str]:
                                               "background": color}))
 
     meta = f"{len(bills)} bills · {d_min.strftime('%b %Y')} – {d_max.strftime('%b %Y')}"
+    if dropped:
+        meta += f" · {dropped} hidden (too dense — zoom into a narrower date range)"
     return children, meta
 
 
 def canvas_style_for(bills: pd.DataFrame) -> dict:
-    """Width override for the timeline canvas based on current date range."""
+    """Width override for the timeline canvas. Must match what render_timeline computes."""
     if bills is None or bills.empty:
         return {"minWidth": f"{MIN_CANVAS_WIDTH}px"}
-    d_min = pd.to_datetime(bills["introduced_date"], errors="coerce").min()
-    d_max = pd.to_datetime(bills["last_action_date"], errors="coerce").max()
-    try:
-        days = max(1, (d_max - d_min).days)
-    except Exception:
+    df = bills.copy()
+    df["_primary_date"] = pd.to_datetime(
+        df["last_action_date"].fillna(df["introduced_date"]), errors="coerce"
+    )
+    df = df.dropna(subset=["_primary_date"])
+    if df.empty:
         return {"minWidth": f"{MIN_CANVAS_WIDTH}px"}
-    w = max(MIN_CANVAS_WIDTH, int(days * PIXELS_PER_DAY_TARGET))
+    d_min = df["_primary_date"].min() - pd.Timedelta(days=20)
+    d_max = df["_primary_date"].max() + pd.Timedelta(days=20)
+    w = _canvas_width_for(df, d_min, d_max)
     return {"minWidth": f"{w}px", "width": f"{w}px"}

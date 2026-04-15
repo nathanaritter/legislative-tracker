@@ -180,26 +180,26 @@ html, body {
 }
 .timeline-canvas {
     position: relative;
-    height: 820px;
+    height: 1010px;
     min-width: 1400px;   /* updated by callback when date range widens */
 }
 .timeline-axis {
     position: absolute;
     left: 0;
     right: 0;
-    top: 400px;
+    top: 505px;
     height: 2px;
     background: var(--gray-500);
 }
 .timeline-tick {
     position: absolute;
-    top: 392px;
+    top: 497px;
     width: 2px;
     background: var(--gray-500);
 }
 .timeline-tick-label {
     position: absolute;
-    top: 414px;
+    top: 519px;
     transform: translateX(-50%);
     font-size: 11px;
     font-weight: 600;
@@ -223,7 +223,7 @@ html, body {
 .bill-card {
     position: absolute;
     width: 210px;
-    height: 150px;
+    height: 156px;
     background: #fff;
     border-radius: 6px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
