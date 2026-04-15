@@ -113,8 +113,10 @@ STATUS_GROUPS = [
 STATUS_GROUP = {
     "introduced":     "introduced",
     "amended":        "introduced",
-    "in_committee":   "committee",
-    "committee":      "committee",
+    # Committee events roll up into the Intro bucket — we don't show "Cmte" as
+    # its own stage. (Raw event_type still stored for audit.)
+    "in_committee":   "introduced",
+    "committee":      "introduced",
     "passed_chamber": "passed",
     "passed":         "passed",
     "signed":         "passed",
@@ -122,12 +124,10 @@ STATUS_GROUP = {
     "vetoed":         "failed",
     "failed":         "failed",
 }
-# Stages in order — used to render the mini-progression bar inside each card.
-# "failed" is treated as a terminal off-ramp rendered as a gray dot.
-STAGE_ORDER = ["introduced", "committee", "passed", "enacted"]
+# Stages we render on the timeline. Committee intentionally absent.
+STAGE_ORDER = ["introduced", "passed", "enacted"]
 STAGE_LABELS = {
     "introduced": "Intro",
-    "committee":  "Cmte",
     "passed":     "Passed",
     "enacted":    "Effect",
     "failed":     "Failed",

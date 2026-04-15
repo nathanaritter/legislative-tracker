@@ -549,13 +549,19 @@ html, body {
    h6 has margin-top: 12px (shared). Each control's margin-bottom is 4px so
    the visible gap is consistent across dropdowns, slider, and date inputs. */
 
-/* Dark-blue risk slider. Remove rc-slider's default bottom padding so the
-   space below the slider matches the rest of the filter stack. */
+/* Dark-blue risk slider. Force the slider wrapper to the same total height
+   a dropdown occupies so header-to-header spacing is identical across the
+   sidebar (measured: ~52px per block). */
 .brand-slider {
     margin-bottom: 4px !important;
+    height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
 }
 .brand-slider .rc-slider {
-    padding: 8px 0 4px 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100%;
 }
 .brand-slider .rc-slider-track {
     background-color: var(--brand) !important;

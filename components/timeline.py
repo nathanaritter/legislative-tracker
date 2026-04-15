@@ -233,20 +233,13 @@ def _risk_chip_inline(score, direction=None):
 
 
 def build_timeline_card_area():
-    zoom_controls = html.Div(
-        [
-            html.Span("Zoom (Ctrl+scroll)", className="zoom-label"),
-            html.Button("−", id="zoom-out-btn", className="zoom-btn", n_clicks=0, title="Zoom out"),
-            html.Span("100%", id="zoom-level-readout", className="zoom-level"),
-            html.Button("+", id="zoom-in-btn", className="zoom-btn", n_clicks=0, title="Zoom in"),
-            html.Button("Fit", id="zoom-fit-btn", className="zoom-btn", n_clicks=0, title="Reset"),
-        ],
-        className="zoom-controls",
-    )
     header_row = html.Div(
         [
             html.H5("Bill progression timeline", style={"margin": 0}),
-            zoom_controls,
+            html.Span(
+                "Drag horizontally to zoom · double-click to reset",
+                className="timeline-hint",
+            ),
         ],
         style={"display": "flex", "alignItems": "center", "justifyContent": "space-between",
                 "marginBottom": "6px"},
@@ -259,6 +252,7 @@ def build_timeline_card_area():
             html.Div(
                 html.Div(id="timeline-canvas", className="timeline-canvas"),
                 className="timeline-wrap",
+                id="timeline-wrap",
             ),
         ],
         className="card",
@@ -266,9 +260,10 @@ def build_timeline_card_area():
 
 
 def _collect_events(bills: pd.DataFrame, events: pd.DataFrame) -> list[EventCard]:
-    """Build one EventCard per bill stage event. If a bill has no events (e.g.
-    only introduced_date), fall back to a single introduced card."""
-    cards: list[EventCard] = []
+    """Build one EventCard per (bill, stage-bucket). Committee actions roll up
+    into Intro — so if a bill has Introduced + Referred + Reported events, only
+    the earliest one produces an Intro card, not three."""
+    cards_raw: list[EventCard] = []
     bills_by_id = {r["bill_id"]: r for _, r in bills.iterrows()}
 
     if events is not None and not events.empty:
@@ -282,13 +277,23 @@ def _collect_events(bills: pd.DataFrame, events: pd.DataFrame) -> list[EventCard
             d = pd.to_datetime(e.get("date"), errors="coerce")
             if pd.isna(d):
                 continue
-            cards.append(EventCard(
+            cards_raw.append(EventCard(
                 bill_id=bid,
                 event_date=d,
                 stage_group=group,
                 raw_event_type=e.get("event_type"),
             ))
 
+    # Dedupe: keep the earliest card per (bill_id, stage_group).
+    by_key: dict[tuple[str, str], EventCard] = {}
+    for c in cards_raw:
+        key = (c.bill_id, c.stage_group)
+        if key not in by_key or c.event_date < by_key[key].event_date:
+            by_key[key] = c
+    cards = list(by_key.values())
+
+    # Fallback: any bill without a single event gets an Intro card from
+    # introduced_date so it still appears on the timeline.
     billed = {c.bill_id for c in cards}
     for bid, row in bills_by_id.items():
         if bid in billed:
@@ -333,8 +338,23 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoo
 
     cards, dropped = _pack_rows(cards)
 
-    children = [html.Div(className="timeline-axis",
-                         style={"left": f"{MARGIN_X}px", "right": f"{MARGIN_X}px"})]
+    # Hidden data div carries the pixel-to-date mapping constants so the
+    # clientside drag-zoom handler can convert a drag rectangle into date bounds
+    # without asking the server.
+    children = [
+        html.Div(
+            id="timeline-bounds",
+            style={"display": "none"},
+            **{
+                "data-d-min": d_min.strftime("%Y-%m-%d"),
+                "data-d-max": d_max.strftime("%Y-%m-%d"),
+                "data-margin": str(MARGIN_X),
+                "data-canvas-w": str(canvas_w),
+            },
+        ),
+        html.Div(className="timeline-axis",
+                 style={"left": f"{MARGIN_X}px", "right": f"{MARGIN_X}px"}),
+    ]
 
     for label, x, is_major in _tick_positions(d_min, d_max, canvas_w):
         children.append(html.Div(className="timeline-tick",
@@ -383,6 +403,19 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoo
     if dropped:
         meta += f" · {dropped} stages hidden (narrow the date range)"
     return children, meta
+
+
+def canvas_bounds(bills: pd.DataFrame, events: pd.DataFrame | None = None):
+    """Return (d_min_iso, d_max_iso) of the event span, or None if empty.
+    Used by the clientside drag-zoom handler to translate pixel coords to dates."""
+    if bills is None or bills.empty:
+        return None
+    cards = _collect_events(bills, events if events is not None else pd.DataFrame())
+    if not cards:
+        return None
+    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=20)
+    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=20)
+    return d_min.strftime("%Y-%m-%d"), d_max.strftime("%Y-%m-%d")
 
 
 def canvas_style_for(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoom: float = 1.0) -> dict:
