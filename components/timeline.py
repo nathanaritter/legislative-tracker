@@ -38,16 +38,19 @@ MAX_CANVAS_WIDTH = 14000
 # above/below makes them fill symmetrically instead of piling all cards above
 # the axis before ever using the below-axis rows.
 ROWS = [
-    (272, "above_near"),   # bottom 368, axis at 380, tick labels at 394-410
-    (420, "below_near"),   # leaves 10px clearance below the tick-label band
-    (162, "above_mid"),
-    (530, "below_mid"),
-    (52,  "above_far"),
-    (640, "below_far"),
-    (750, "below_far2"),
-    (860, "below_far3"),
+    # Tick marks occupy y=372–390 (axis at 380), tick labels y=394–412. Cards
+    # should never enter either band, so above_near bottom is ≤ 366 and
+    # below_near top is ≥ 420.
+    (250, "above_near"),   # bottom 346 → 26px of clear space above the axis
+    (440, "below_near"),   # 30px below the tick-label band
+    (140, "above_mid"),
+    (550, "below_mid"),
+    (30,  "above_far"),
+    (660, "below_far"),
+    (770, "below_far2"),
+    (880, "below_far3"),
 ]
-CANVAS_HEIGHT = 960
+CANVAS_HEIGHT = 980
 
 
 STAGE_COLORS = {

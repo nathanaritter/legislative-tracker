@@ -25,7 +25,7 @@
     // Row top positions — must match ROWS in components/timeline.py.
     // Order is important: packing walks this list and places each card in the
     // first row where it doesn't collide.
-    const ROWS_Y = [272, 400, 162, 510, 52, 620, 730, 840];
+    const ROWS_Y = [250, 440, 140, 550, 30, 660, 770, 880];
     const CARD_W = 188;
     const CARD_H = 96;
     const AXIS_Y = 380;
