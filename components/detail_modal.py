@@ -93,15 +93,21 @@ def build_detail_modal():
                     html.Div(
                         [
                             html.Div(
-                                [html.H6("Risk score"), dcc.Graph(id="detail-risk-gauge", config={"displayModeBar": False})],
-                                style={"flex": "1"},
+                                [html.H6("Risk score"),
+                                 dcc.Graph(id="detail-risk-gauge",
+                                           config={"displayModeBar": False},
+                                           style={"height": "190px"})],
+                                style={"flex": "1", "minWidth": "0"},
                             ),
                             html.Div(
-                                [html.H6("Risk breakdown"), dcc.Graph(id="detail-risk-breakdown", config={"displayModeBar": False})],
-                                style={"flex": "2", "marginLeft": "16px"},
+                                [html.H6("Risk breakdown"),
+                                 dcc.Graph(id="detail-risk-breakdown",
+                                           config={"displayModeBar": False},
+                                           style={"height": "220px"})],
+                                style={"flex": "2", "marginLeft": "16px", "minWidth": "0"},
                             ),
                         ],
-                        style={"display": "flex"},
+                        style={"display": "flex", "alignItems": "flex-start"},
                     ),
 
                     html.H6("AI summary", style={"marginTop": "16px"}),
