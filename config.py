@@ -150,13 +150,21 @@ STATUS_BUCKETS = [
 STATUS_COLOR = {code: color for code, _label, color in STATUS_BUCKETS}
 STATUS_LABEL = {code: label for code, label, _c in STATUS_BUCKETS}
 
-# Legend shown in the title bar — one row per distinct color.
+# Legend shown in the title bar — status colors.
 LEGEND = [
     ("In Effect",              "#2E7D32"),
     ("Signed / Passed Leg.",   "#1B5E83"),
     ("Introduced / Committee", "#6A4C93"),
     ("Vetoed / Killed",        "#999999"),
     ("Election / Vote",        "#8B6914"),
+]
+
+# Direction legend — shown next to the status legend in the title bar so the
+# user knows what the ▲ ▼ ◆ glyphs on cards and in the right sidebar mean.
+DIRECTION_LEGEND = [
+    ("Favorable for CRE", "▲", "#059669"),
+    ("Adverse for CRE",   "▼", "#dc2626"),
+    ("Mixed impact",      "◆", "#d97706"),
 ]
 
 # Backwards-compatible alias used by a couple of older render paths.

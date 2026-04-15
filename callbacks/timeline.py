@@ -140,6 +140,8 @@ clientside_callback(
                 const did = el.getAttribute('data-bill-id');
                 if (did) el.style.display = set.has(did) ? 'none' : '';
             });
+        // Re-pack row assignments so visible cards collapse into empty rows.
+        if (typeof window.repackTimeline === 'function') window.repackTimeline();
         return arr;
     }
     """,
@@ -174,6 +176,7 @@ clientside_callback(
                 const did = el.getAttribute('data-bill-id');
                 if (did) el.style.display = set.has(did) ? 'none' : '';
             });
+        if (typeof window.repackTimeline === 'function') window.repackTimeline();
         return window.dash_clientside.no_update;
     }
     """,

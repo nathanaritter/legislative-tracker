@@ -182,6 +182,13 @@ html, body {
     border-radius: 50%;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.9);
 }
+.legend-glyph {
+    display: inline-block;
+    width: 10px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1;
+}
 
 /* ========== Outer card ========== */
 .card {

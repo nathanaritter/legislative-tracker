@@ -5,7 +5,7 @@ timeline itself fits in the viewport without vertical scrolling.
 
 from dash import html
 
-from config import LEGEND
+from config import LEGEND, DIRECTION_LEGEND
 
 
 def build_title_bar():
@@ -19,6 +19,17 @@ def build_title_bar():
         )
         for label, color in LEGEND
     ]
+    # Direction glyphs — so the ▲ ▼ ◆ shown on cards and in the right sidebar
+    # are explained in the title-bar legend.
+    for label, glyph, color in DIRECTION_LEGEND:
+        legend_items.append(html.Div(
+            [
+                html.Span(glyph, className="legend-glyph",
+                          style={"color": color, "fontWeight": "700"}),
+                html.Span(label),
+            ],
+            className="legend-item",
+        ))
 
     return html.Div(
         [
