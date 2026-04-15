@@ -1,10 +1,12 @@
 """
 Render the card-based timeline + right-side bill legend from current filters.
-The legend lets users hide/show individual bills; hidden-bill IDs live in
-`hidden-bills-store`.
+
+Hiding bills via the legend uses clientside JavaScript for instant toggling —
+we don't round-trip through Python for simple show/hide. Python only re-renders
+the timeline when the filter query itself changes (state, status, dates).
 """
 
-from dash import Input, Output, State, callback, ctx, ALL, html, no_update
+from dash import Input, Output, State, callback, clientside_callback, ClientsideFunction, ctx, ALL, html, no_update
 
 from components.timeline import render_timeline, canvas_style_for
 from loaders.bills import filter_bills, get_events_for
@@ -26,20 +28,19 @@ _STATUS_COLOR = {
     Output("timeline-meta", "children"),
     Output("bill-legend", "children"),
     Input("filters-store", "data"),
-    Input("hidden-bills-store", "data"),
     Input("zoom-store", "data"),
 )
-def render(filters, hidden_list, zoom):
+def render(filters, zoom):
     filters = filters or {}
     zoom = float(zoom or 1.0)
     all_bills = filter_bills(filters)
-    hidden = set(hidden_list or [])
 
-    visible = all_bills[~all_bills["bill_id"].isin(hidden)] if not all_bills.empty else all_bills
-
-    events = get_events_for(visible["bill_id"].tolist()) if not visible.empty else None
-    children, meta = render_timeline(visible, events, zoom=zoom)
-    style = canvas_style_for(visible, events, zoom=zoom)
+    # Render ALL filtered bills — clientside JS will hide the ones flagged in
+    # hidden-bills-store by toggling CSS `display: none`. This keeps the
+    # expensive Python render off the click hot-path.
+    events = get_events_for(all_bills["bill_id"].tolist()) if not all_bills.empty else None
+    children, meta = render_timeline(all_bills, events, zoom=zoom)
+    style = canvas_style_for(all_bills, events, zoom=zoom)
 
     legend_items = [html.H5("Bills in view")]
     if all_bills.empty:
@@ -50,7 +51,6 @@ def render(filters, hidden_list, zoom):
         )
         for _, row in sorted_bills.iterrows():
             bill_id = row["bill_id"]
-            is_hidden = bill_id in hidden
             group = STATUS_GROUP.get(row.get("current_status") or "introduced", "introduced")
             color = _STATUS_COLOR.get(group, "#6A4C93")
             label = f"{row.get('bill_number','')} — {row.get('title','')}"
@@ -59,12 +59,93 @@ def render(filters, hidden_list, zoom):
                     html.Span(className="swatch", style={"background": color}),
                     html.Span(label, className="label", title=label),
                 ],
-                className=f"bill-legend-item{' hidden' if is_hidden else ''}",
+                className="bill-legend-item",
                 id={"type": "bill-legend-item", "bill_id": bill_id},
                 n_clicks=0,
+                **{"data-bill-id": bill_id},
             ))
 
     return children, style, meta, legend_items
+
+
+# ----------------------------------------------------------------------------
+# Clientside toggling: click a legend item -> update hidden-bills-store AND
+# toggle the `.hidden` / `display: none` CSS on the matching legend item and
+# every matching timeline card. No Python round-trip, so the UI responds in
+# milliseconds no matter how many cards are rendered.
+# ----------------------------------------------------------------------------
+
+clientside_callback(
+    """
+    function(n_clicks_array, hidden) {
+        const trig = window.dash_clientside.callback_context.triggered[0];
+        if (!trig) return window.dash_clientside.no_update;
+        // Parse which legend item fired
+        let id;
+        try { id = JSON.parse(trig.prop_id.split('.')[0]); }
+        catch (e) { return window.dash_clientside.no_update; }
+        if (!id || id.type !== 'bill-legend-item') return window.dash_clientside.no_update;
+        if (!trig.value) return window.dash_clientside.no_update;  // fresh render, ignore
+
+        const billId = id.bill_id;
+        const set = new Set(hidden || []);
+        if (set.has(billId)) set.delete(billId); else set.add(billId);
+        const arr = [...set].sort();
+
+        // Toggle the legend item's .hidden class
+        document
+            .querySelectorAll('.bill-legend-item')
+            .forEach(el => {
+                const did = el.getAttribute('data-bill-id');
+                if (did) el.classList.toggle('hidden', set.has(did));
+            });
+        // Toggle display:none on every timeline card for this bill_id
+        document
+            .querySelectorAll('.bill-card')
+            .forEach(el => {
+                try {
+                    const cid = JSON.parse(el.id || '{}');
+                    if (cid && cid.bill_id) {
+                        el.style.display = set.has(cid.bill_id) ? 'none' : '';
+                    }
+                } catch (e) {}
+            });
+        return arr;
+    }
+    """,
+    Output("hidden-bills-store", "data"),
+    Input({"type": "bill-legend-item", "bill_id": ALL}, "n_clicks"),
+    State("hidden-bills-store", "data"),
+    prevent_initial_call=True,
+)
+
+
+# After every timeline re-render we must re-apply the hidden state to the new
+# DOM (legend items and cards), because clientside JS runs after each render.
+clientside_callback(
+    """
+    function(_children, hidden) {
+        const set = new Set(hidden || []);
+        document.querySelectorAll('.bill-legend-item').forEach(el => {
+            const did = el.getAttribute('data-bill-id');
+            if (did) el.classList.toggle('hidden', set.has(did));
+        });
+        document.querySelectorAll('.bill-card').forEach(el => {
+            try {
+                const cid = JSON.parse(el.id || '{}');
+                if (cid && cid.bill_id) {
+                    el.style.display = set.has(cid.bill_id) ? 'none' : '';
+                }
+            } catch (e) {}
+        });
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("hidden-bills-store", "data", allow_duplicate=True),
+    Input("timeline-canvas", "children"),
+    State("hidden-bills-store", "data"),
+    prevent_initial_call=True,
+)
 
 
 @callback(
@@ -88,20 +169,6 @@ def change_zoom(_in, _out, _fit, current):
     return z, f"{int(round(z * 100))}%"
 
 
-@callback(
-    Output("hidden-bills-store", "data"),
-    Input({"type": "bill-legend-item", "bill_id": ALL}, "n_clicks"),
-    State("hidden-bills-store", "data"),
-    prevent_initial_call=True,
-)
-def toggle_hidden(_clicks, hidden_list):
-    trigger = ctx.triggered_id
-    if not isinstance(trigger, dict) or trigger.get("type") != "bill-legend-item":
-        return no_update
-    bill_id = trigger["bill_id"]
-    hidden = set(hidden_list or [])
-    if bill_id in hidden:
-        hidden.remove(bill_id)
-    else:
-        hidden.add(bill_id)
-    return sorted(hidden)
+# The Python toggle_hidden callback is replaced by the clientside_callback
+# above — removed to avoid a duplicate Output registration that prevented the
+# page from loading.
