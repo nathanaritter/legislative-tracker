@@ -34,13 +34,15 @@ MARGIN_X = 110
 PIXELS_PER_DAY_TARGET = 5.2
 MAX_CANVAS_WIDTH = 14000
 
-# (top_px, anchor_side). Add more pairs here to raise the stacking ceiling.
+# (top_px, anchor_side). Row packing walks this list in order, so alternating
+# above/below makes them fill symmetrically instead of piling all cards above
+# the axis before ever using the below-axis rows.
 ROWS = [
     (272, "above_near"),   # bottom 368, axis at 380
-    (162, "above_mid"),    # bottom 258
-    (52,  "above_far"),    # bottom 148
     (400, "below_near"),
+    (162, "above_mid"),
     (510, "below_mid"),
+    (52,  "above_far"),
     (620, "below_far"),
     (730, "below_far2"),
     (840, "below_far3"),
