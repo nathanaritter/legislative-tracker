@@ -205,12 +205,31 @@ html, body {
 .timeline-wrap {
     position: relative;
     width: 100%;
-    overflow-x: auto;
+    overflow: hidden;              /* no horizontal scroll — zoom fits viewport */
+    user-select: none;
+    cursor: grab;
+}
+.timeline-wrap.drag-active { cursor: grabbing; }
+.timeline-wrap .zoom-select-rect {
+    position: absolute;
+    top: 0; bottom: 0;
+    background: rgba(7, 64, 112, 0.12);
+    border-left: 1px solid var(--brand);
+    border-right: 1px solid var(--brand);
+    pointer-events: none;
+    z-index: 10;
 }
 .timeline-canvas {
     position: relative;
     height: 560px;
-    min-width: 1400px;
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+}
+.timeline-hint {
+    font-size: 11px;
+    color: var(--gray-500);
+    font-style: italic;
 }
 .timeline-axis {
     position: absolute;
@@ -553,15 +572,17 @@ html, body {
    a dropdown occupies so header-to-header spacing is identical across the
    sidebar (measured: ~52px per block). */
 .brand-slider {
-    margin-bottom: 4px !important;
-    height: 36px !important;
-    display: flex !important;
-    align-items: center !important;
+    /* 44px block height matches dropdown visual height; 10px horizontal inset
+       keeps the track from running flush to the sidebar edges. */
+    padding: 18px 14px !important;
+    margin: 0 !important;
+    display: block !important;
 }
 .brand-slider .rc-slider {
     padding: 0 !important;
     margin: 0 !important;
     width: 100%;
+    position: relative;
 }
 .brand-slider .rc-slider-track {
     background-color: var(--brand) !important;
