@@ -1,0 +1,132 @@
+/* Legislative Tracker — shared design tokens with analytics-workbench / contract-tracker */
+
+:root {
+    --brand: #074070;
+    --brand-light: #B6D6EF;
+    --accent: #589BD5;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+    --nav-height: 56px;
+    --sidebar-width: 320px;
+    --card-radius: 8px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    color: var(--gray-900);
+    background: var(--gray-50);
+    margin: 0;
+}
+
+.app-topnav {
+    height: var(--nav-height);
+    background: var(--brand);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.app-topnav .title {
+    font-size: 15px;
+}
+
+.app-shell {
+    display: flex;
+    height: calc(100vh - var(--nav-height));
+}
+
+.app-sidebar {
+    width: var(--sidebar-width);
+    background: #fff;
+    border-right: 1px solid var(--gray-200);
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.app-sidebar h6 {
+    color: var(--gray-700);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    margin-top: 16px;
+    margin-bottom: 6px;
+}
+
+.app-sidebar h6:first-child {
+    margin-top: 0;
+}
+
+.app-main {
+    flex: 1;
+    padding: 16px;
+    overflow: auto;
+}
+
+.card {
+    background: #fff;
+    border-radius: var(--card-radius);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    padding: 16px;
+    margin-bottom: 16px;
+    border: 1px solid var(--gray-200);
+}
+
+.card h5 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin: 0 0 12px 0;
+}
+
+/* Dash dropdown tweaks for the Milestone look */
+.Select-control,
+.Select-menu-outer {
+    border-color: var(--gray-300) !important;
+    font-size: 13px;
+}
+
+.dash-dropdown .Select-value-label {
+    color: var(--gray-900) !important;
+}
+
+/* Filter section spacing */
+.filter-row {
+    margin-bottom: 10px;
+}
+
+.filter-row label {
+    font-size: 12px;
+    color: var(--gray-700);
+    font-weight: 500;
+    margin-bottom: 4px;
+    display: block;
+}
+
+/* Risk gauge & modal */
+.risk-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 12px;
+    color: #fff;
+}
+.risk-low { background: #059669; }
+.risk-mid { background: #d97706; }
+.risk-high { background: #dc2626; }
+
+.modal-title {
+    color: var(--brand);
+    font-weight: 600;
+}

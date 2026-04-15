@@ -1,0 +1,32 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+.env
+.env.local
+*.log
+
+.DS_Store
+Thumbs.db
+
+.idea/
+.vscode/
+*.swp
+
+# Never sync raw per-bill API responses to git or OneDrive.
+# These must live only in Azure Blob (stdp58902/etl/legislation/raw/).
+temp/
+raw/
+*.json.gz
+_legiscan_cache/
+_legistar_cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

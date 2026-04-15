@@ -1,0 +1,50 @@
+name: Build and Deploy to Container App
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.LEGISLATIVETRACKER_AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.LEGISLATIVETRACKER_AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.LEGISLATIVETRACKER_AZURE_SUBSCRIPTION_ID }}
+
+    - name: Build and deploy to Container App
+      uses: azure/container-apps-deploy-action@v2
+      with:
+        appSourcePath: ${{ github.workspace }}
+        registryUrl: acrdataplatdevdcbe93ee.azurecr.io
+        registryUsername: ${{ secrets.LEGISLATIVETRACKER_REGISTRY_USERNAME }}
+        registryPassword: ${{ secrets.LEGISLATIVETRACKER_REGISTRY_PASSWORD }}
+        containerAppName: ca-legislative-tracker
+        resourceGroup: rg-data-platform
+        imageToBuild: acrdataplatdevdcbe93ee.azurecr.io/legislative-tracker:${{ github.sha }}
+
+    - name: Lock to single replica
+      run: |
+        az containerapp update \
+          --name ca-legislative-tracker \
+          --resource-group rg-data-platform \
+          --min-replicas 0 \
+          --max-replicas 1
+
+    - name: Purge old images from ACR
+      run: |
+        az acr run \
+          --registry acrdataplatdevdcbe93ee \
+          --cmd "acr purge --filter 'legislative-tracker:.*' --ago 0d --keep 1 --untagged" \
+          /dev/null
