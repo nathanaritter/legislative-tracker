@@ -61,159 +61,72 @@ def _read_csv(path):
 # ----------------------------------------------------------------------------
 
 def _sample_bills() -> pd.DataFrame:
+    """DEMO-ONLY placeholder data. Bill numbers all start with DEMO- so they
+    can't be mistaken for real legislation. Replaced the moment a real
+    bills.parquet exists under ../etl-base/parquet/market/legislation/.
+    """
     today = datetime.today().date()
-    # Rich sample roughly spanning 2024-03 through 2026-04 so the timeline looks populated.
+
+    def _breakdown(score: int) -> str:
+        # Distribute the composite score across the 5 components proportionally
+        # to their max weights so demo bars look realistic but varied.
+        maxes = {"operational_impact": 30, "capital_cost_impact": 25,
+                 "passage_probability": 20, "scope_breadth": 15, "urgency": 10}
+        total_max = sum(maxes.values())
+        factor = score / 100.0
+        out = {}
+        for k, m in maxes.items():
+            # Small deterministic jitter per key so components differ.
+            jitter = ((hash(k) % 7) - 3) / 10.0
+            out[k] = max(0, min(m, round(m * factor + jitter)))
+        return json.dumps(out)
+
+    def _rationale(score: int) -> str:
+        severity = "low" if score < 40 else ("moderate" if score < 70 else "high")
+        return json.dumps({
+            "operational_impact": f"Demo rationale: {severity} operational impact assessed from the bill summary.",
+            "capital_cost_impact": f"Demo rationale: {severity} projected capex and fees exposure.",
+            "passage_probability": "Demo rationale: derived from current status, sponsor count, and chamber math.",
+            "scope_breadth": "Demo rationale: jurisdiction population × asset classes touched.",
+            "urgency": "Demo rationale: estimated effective date proximity.",
+        })
+
+    sponsors_demo = '[{"name":"Demo Sponsor A","party":"D","role":"Senator","district":"—"},' \
+                    '{"name":"Demo Sponsor B","party":"R","role":"Representative","district":"—"}]'
+
+    def mk(bill_id, state, area_id, level, juris, number, title, intro, last, status,
+           subjects, score, direction):
+        # direction: "favorable" | "adverse" | "mixed" — how the bill nets out for CRE.
+        return (
+            bill_id, "demo", state, area_id, level, juris,
+            number, "Demo session", title,
+            intro, last, status,
+            sponsors_demo, subjects, "", "",
+            True, "",
+            "Demo placeholder. Real bill summaries and risk rationales appear after LegiScan + the AI batch run.",
+            score, _breakdown(score), "demo", _rationale(score),
+            direction,
+        )
+
     samples = [
-        ("legiscan:CO:SB24-001", "legiscan", "CO", 8, "state", "Colorado State",
-         "SB24-001", "2024", "Rent Control Local Authority",
-         today - timedelta(days=120), today - timedelta(days=15), "passed_chamber",
-         '[{"name":"Julie Gonzales","party":"D","role":"Senator","district":"34"}]',
-         '["rent_control","tenant"]', "https://legiscan.com/CO/bill/SB24-001",
-         "legislation/text/legiscan_CO_SB24-001.pdf",
-         True, "rent control; tenant",
-         "Authorizes local rent stabilization ordinances.\nOverrides prior state pre-emption.\nEffective 2026-01-01 if signed.",
-         72, '{"operational_impact":22,"capital_cost_impact":18,"passage_probability":15,"scope_breadth":12,"urgency":5}',
-         "claude-opus-4-6"),
-        ("legiscan:CO:HB26-1013", "legiscan", "CO", 8, "state", "Colorado State",
-         "HB26-1013", "2026", "Ratio Utility Billing Systems (RUBS)",
-         today - timedelta(days=60), today - timedelta(days=20), "in_committee",
-         '[{"name":"Javier Mabrey","party":"D","role":"Representative","district":"1"}]',
-         '["rent_control","habitability"]', "https://legiscan.com/CO/bill/HB26-1013",
-         "legislation/text/legiscan_CO_HB26-1013.pdf",
-         True, "rent; habitability",
-         "Zero markup on utilities billed to tenants.\nFormula must be disclosed in the lease.\nCommon-area costs are the landlord's.",
-         61, '{"operational_impact":18,"capital_cost_impact":10,"passage_probability":14,"scope_breadth":12,"urgency":7}',
-         "claude-opus-4-6"),
-        ("legiscan:CO:HB26-1106", "legiscan", "CO", 8, "state", "Colorado State",
-         "HB26-1106", "2026", "Eviction Reforms",
-         today - timedelta(days=90), today - timedelta(days=72), "failed",
-         '[{"name":"Lorena Garcia","party":"D","role":"Representative","district":"35"}]',
-         '["eviction","tenant"]', "https://legiscan.com/CO/bill/HB26-1106",
-         "",
-         False, "eviction; tenant",
-         "Would have capped daily eviction hearings.\nWould have blocked cold-weather removals.\nHouse Judiciary postponed indefinitely.",
-         22, '{"operational_impact":6,"capital_cost_impact":4,"passage_probability":2,"scope_breadth":8,"urgency":2}',
-         "claude-opus-4-6"),
-        ("legiscan:CO:SB26-046", "legiscan", "CO", 8, "state", "Colorado State",
-         "SB26-046", "2026", "Uniform Property-Tax Protest Rules",
-         today - timedelta(days=150), today - timedelta(days=30), "passed",
-         '[{"name":"Chris Hansen","party":"D","role":"Senator","district":"31"}]',
-         '["property_tax"]', "https://legiscan.com/CO/bill/SB26-046",
-         "legislation/text/legiscan_CO_SB26-046.pdf",
-         True, "property tax",
-         "One set of deadlines, notice rules, and forms for appeals.\nApplies to all 64 counties.\nEffective for 2027 assessments.",
-         55, '{"operational_impact":14,"capital_cost_impact":12,"passage_probability":18,"scope_breadth":8,"urgency":3}',
-         "claude-opus-4-6"),
-        ("legiscan:CO:HB26-1158", "legiscan", "CO", 8, "state", "Colorado State",
-         "HB26-1158", "2026", "Tenant-Lawyer Funding",
-         today - timedelta(days=70), today - timedelta(days=25), "in_committee",
-         '[]',
-         '["eviction"]', "https://legiscan.com/CO/bill/HB26-1158",
-         "",
-         True, "eviction",
-         "State appropriation for tenant counsel in non-payment actions.\nPilot in Denver, Adams, Pueblo.\nCarries a $14M annual fiscal note.",
-         48, '{"operational_impact":12,"capital_cost_impact":8,"passage_probability":10,"scope_breadth":12,"urgency":6}',
-         "claude-opus-4-6"),
-        ("legiscan:CO:HB26-1310", "legiscan", "CO", 8, "state", "Colorado State",
-         "HB26-1310", "2026", "Surveillance Pricing Ban",
-         today - timedelta(days=40), today - timedelta(days=10), "introduced",
-         '[]',
-         '["rent_control"]', "https://legiscan.com/CO/bill/HB26-1310",
-         "",
-         True, "rent; pricing",
-         "Bars revenue-management software from setting rental prices using non-public peer data.\nRequires annual disclosure.\nPrivate right of action.",
-         68, '{"operational_impact":20,"capital_cost_impact":6,"passage_probability":10,"scope_breadth":12,"urgency":10}',
-         "claude-opus-4-6"),
-        ("legiscan:TX:HB2127", "legiscan", "TX", 48, "state", "Texas State",
-         "HB2127", "2024", "Regulatory Consistency Act",
-         today - timedelta(days=400), today - timedelta(days=260), "enacted",
-         '[{"name":"Dustin Burrows","party":"R","role":"Representative","district":"83"}]',
-         '["zoning","land_use","permitting"]', "https://legiscan.com/TX/bill/HB2127",
-         "legislation/text/legiscan_TX_HB2127.pdf",
-         True, "zoning; land use; permitting",
-         "Pre-empts local ordinances exceeding state standards in nine fields.\nApplies to property regulation, labor, natural resources.\nEffective Sep 1, 2023.",
-         58, '{"operational_impact":18,"capital_cost_impact":12,"passage_probability":18,"scope_breadth":8,"urgency":2}',
-         "claude-opus-4-6"),
-        ("legiscan:FL:HB1417", "legiscan", "FL", 12, "state", "Florida State",
-         "HB1417", "2025", "Residential Landlord Pre-emption",
-         today - timedelta(days=320), today - timedelta(days=220), "enacted",
-         '[{"name":"Tiffany Esposito","party":"R","role":"Representative","district":"77"}]',
-         '["tenant","rent_control"]', "https://legiscan.com/FL/bill/HB1417",
-         "legislation/text/legiscan_FL_HB1417.pdf",
-         True, "tenant; rent control",
-         "Pre-empts local rent regulations and tenant-protection ordinances.\nRestricts notice requirements to state default.\nEffective July 1, 2023.",
-         60, '{"operational_impact":16,"capital_cost_impact":10,"passage_probability":18,"scope_breadth":12,"urgency":2}',
-         "claude-opus-4-6"),
-        ("legiscan:FL:SB180", "legiscan", "FL", 12, "state", "Florida State",
-         "SB180", "2026", "Property Insurance Transparency",
-         today - timedelta(days=130), today - timedelta(days=40), "passed_chamber",
-         '[]',
-         '["insurance"]', "https://legiscan.com/FL/bill/SB180",
-         "",
-         True, "insurance",
-         "Insurers must publish underwriting criteria for coastal multifamily.\nCreates state rate-review board.\nEffective Jan 1, 2027 if signed.",
-         50, '{"operational_impact":8,"capital_cost_impact":18,"passage_probability":14,"scope_breadth":8,"urgency":2}',
-         "claude-opus-4-6"),
-        ("legiscan:NV:SB321", "legiscan", "NV", 32, "state", "Nevada State",
-         "SB321", "2025", "Summary Eviction Reform",
-         today - timedelta(days=280), today - timedelta(days=200), "vetoed",
-         '[]',
-         '["eviction"]', "https://legiscan.com/NV/bill/SB321",
-         "",
-         False, "eviction",
-         "Would have extended non-payment eviction timeline to 10 days.\nVetoed by Governor Lombardo.\nNo override vote taken.",
-         18, '{"operational_impact":6,"capital_cost_impact":2,"passage_probability":2,"scope_breadth":6,"urgency":2}',
-         "claude-opus-4-6"),
-        ("legiscan:AZ:HB2447", "legiscan", "AZ", 4, "state", "Arizona State",
-         "HB2447", "2026", "Starter Home Zoning",
-         today - timedelta(days=90), today - timedelta(days=5), "passed",
-         '[{"name":"Justin Wilmeth","party":"R","role":"Representative","district":"2"}]',
-         '["zoning","land_use","adu"]', "https://legiscan.com/AZ/bill/HB2447",
-         "legislation/text/legiscan_AZ_HB2447.pdf",
-         True, "zoning; land use; ADU",
-         "Requires cities > 75k to allow duplex/triplex by right on SFR lots.\nAllows ADUs by right statewide.\nPre-empts minimum lot size > 6,000 sq ft.",
-         74, '{"operational_impact":20,"capital_cost_impact":18,"passage_probability":18,"scope_breadth":14,"urgency":4}',
-         "claude-opus-4-6"),
-        ("legiscan:UT:HB476", "legiscan", "UT", 49, "state", "Utah State",
-         "HB476", "2026", "Housing Affordability Amendments",
-         today - timedelta(days=180), today - timedelta(days=95), "enacted",
-         '[]',
-         '["affordable_housing","land_use"]', "https://legiscan.com/UT/bill/HB476",
-         "legislation/text/legiscan_UT_HB476.pdf",
-         True, "affordable housing; land use",
-         "Creates state-level housing plan review.\nPenalizes cities that block missing-middle housing.\nLinks transportation funding to compliance.",
-         65, '{"operational_impact":14,"capital_cost_impact":16,"passage_probability":20,"scope_breadth":12,"urgency":3}',
-         "claude-opus-4-6"),
-        ("legistar:denver:22-1524", "legistar", "CO", 8, "city", "Denver",
-         "22-1524", "2024", "Short-Term Rental Enforcement",
-         today - timedelta(days=220), today - timedelta(days=185), "passed",
-         '[{"name":"Candi CdeBaca","party":"D","role":"Council","district":"9"}]',
-         '["short_term_rental"]', "https://denver.legistar.com/LegislationDetail.aspx?ID=22-1524",
-         "legislation/text/legistar_denver_22-1524.pdf",
-         True, "short-term rental; STR",
-         "Increases fines for unlicensed STRs.\nQuarterly audits of listing platforms.\nRequires license number in all listings.",
-         44, '{"operational_impact":14,"capital_cost_impact":8,"passage_probability":16,"scope_breadth":4,"urgency":2}',
-         "claude-opus-4-6"),
-        ("legistar:austin:2026-0714", "legistar", "TX", 48, "city", "Austin",
-         "2026-0714", "2026", "Compatibility Standards Overhaul",
-         today - timedelta(days=160), today - timedelta(days=45), "passed_chamber",
-         '[]',
-         '["zoning","land_use"]', "https://austin.legistar.com/LegislationDetail.aspx?ID=2026-0714",
-         "",
-         True, "zoning; land use",
-         "Reduces triggering distance for compatibility setbacks.\nAllows 4-over-2 in transit corridors.\nRe-plats not required for each new building.",
-         52, '{"operational_impact":12,"capital_cost_impact":10,"passage_probability":14,"scope_breadth":12,"urgency":4}',
-         "claude-opus-4-6"),
-        ("legistar:nashville:BL2026-114", "legistar", "TN", 47, "city", "Nashville-Davidson",
-         "BL2026-114", "2026", "Workforce Housing Incentive Expansion",
-         today - timedelta(days=75), today - timedelta(days=15), "in_committee",
-         '[]',
-         '["affordable_housing","tif"]', "https://nashville.legistar.com/LegislationDetail.aspx?ID=BL2026-114",
-         "",
-         True, "affordable housing; TIF",
-         "Widens PILOT eligibility to 80% AMI units.\nAdds TIF-backed gap financing option.\nScheduled for council 3rd reading Apr 28.",
-         40, '{"operational_impact":8,"capital_cost_impact":10,"passage_probability":10,"scope_breadth":8,"urgency":4}',
-         "claude-opus-4-6"),
+        # State-level DEMO bills, spread across target markets + statuses. Direction
+        # varies: pre-emption + zoning liberalization bills are favorable for CRE
+        # owners; rent control / surveillance pricing bans / eviction expansions
+        # are adverse; property-tax transparency / insurance reform are mixed.
+        mk("demo:CO:DEMO-01", "CO", 8,  "state", "Colorado State", "DEMO-01", "Local Rent Stabilization Authority", today - timedelta(days=120), today - timedelta(days=15),  "passed_chamber", '["rent_control"]',      72, "adverse"),
+        mk("demo:CO:DEMO-02", "CO", 8,  "state", "Colorado State", "DEMO-02", "Utility Billing Transparency",        today - timedelta(days=60),  today - timedelta(days=20),  "in_committee",   '["habitability"]',      55, "adverse"),
+        mk("demo:CO:DEMO-03", "CO", 8,  "state", "Colorado State", "DEMO-03", "Uniform Property-Tax Protest Rules",  today - timedelta(days=150), today - timedelta(days=30),  "passed",         '["property_tax"]',      48, "favorable"),
+        mk("demo:CO:DEMO-04", "CO", 8,  "state", "Colorado State", "DEMO-04", "Tenant-Lawyer Funding",               today - timedelta(days=70),  today - timedelta(days=25),  "in_committee",   '["eviction"]',          40, "adverse"),
+        mk("demo:CO:DEMO-05", "CO", 8,  "state", "Colorado State", "DEMO-05", "Surveillance Pricing Ban",            today - timedelta(days=40),  today - timedelta(days=10),  "introduced",     '["rent_control"]',      68, "adverse"),
+        mk("demo:TX:DEMO-06", "TX", 48, "state", "Texas State",    "DEMO-06", "Local Pre-emption Act (DEMO)",        today - timedelta(days=400), today - timedelta(days=260), "enacted",        '["zoning","land_use"]', 58, "favorable"),
+        mk("demo:FL:DEMO-07", "FL", 12, "state", "Florida State",  "DEMO-07", "Residential Landlord Pre-emption",    today - timedelta(days=320), today - timedelta(days=220), "enacted",        '["rent_control"]',      60, "favorable"),
+        mk("demo:FL:DEMO-08", "FL", 12, "state", "Florida State",  "DEMO-08", "Property Insurance Transparency",     today - timedelta(days=130), today - timedelta(days=40),  "passed_chamber", '["insurance"]',         50, "mixed"),
+        mk("demo:AZ:DEMO-09", "AZ", 4,  "state", "Arizona State",  "DEMO-09", "Starter Home Zoning",                 today - timedelta(days=90),  today - timedelta(days=5),   "passed",         '["zoning","adu"]',      74, "favorable"),
+        mk("demo:UT:DEMO-10", "UT", 49, "state", "Utah State",     "DEMO-10", "Housing Affordability Amendments",    today - timedelta(days=180), today - timedelta(days=95),  "enacted",        '["affordable_housing"]',65, "mixed"),
+        # City-level DEMO bills
+        mk("demo:denver:DEMO-11",    "CO", 8,  "city", "Denver",             "Denver DEMO-11",    "Short-Term Rental Enforcement",   today - timedelta(days=220), today - timedelta(days=185), "passed",         '["short_term_rental"]', 44, "adverse"),
+        mk("demo:austin:DEMO-12",    "TX", 48, "city", "Austin",             "Austin DEMO-12",    "Compatibility Standards Overhaul",today - timedelta(days=160), today - timedelta(days=45),  "passed_chamber", '["zoning"]',            52, "favorable"),
+        mk("demo:nashville:DEMO-13", "TN", 47, "city", "Nashville-Davidson", "Nashville DEMO-13", "Workforce Housing Expansion",     today - timedelta(days=75),  today - timedelta(days=15),  "in_committee",   '["affordable_housing"]',40, "favorable"),
     ]
     cols = [
         "bill_id", "source", "state", "area_id", "jurisdiction_level", "jurisdiction_name",
@@ -221,6 +134,7 @@ def _sample_bills() -> pd.DataFrame:
         "sponsors_json", "subjects_json", "url", "text_blob_path",
         "cre_relevant", "cre_keywords_hit",
         "ai_summary", "ai_risk_score", "ai_risk_breakdown_json", "ai_model_version",
+        "ai_risk_rationale_json", "impact_direction",
     ]
     df = pd.DataFrame(samples, columns=cols)
     df["introduced_date"] = pd.to_datetime(df["introduced_date"])
@@ -229,19 +143,59 @@ def _sample_bills() -> pd.DataFrame:
 
 
 def _sample_events() -> pd.DataFrame:
+    """Synthetic per-stage events for the DEMO sample bills so progression bars
+    inside each card have something to render. Stage coverage varies by bill so
+    the UI exercises all states (introduced, committee, passed chamber, passed,
+    signed, enacted, vetoed)."""
     today = datetime.today().date()
+    t = today
     rows = [
-        ("legiscan:CO:SB24-001", today - timedelta(days=120), "introduced", "senate"),
-        ("legiscan:CO:SB24-001", today - timedelta(days=80),  "committee",  "senate"),
-        ("legiscan:CO:SB24-001", today - timedelta(days=30),  "passed_chamber", "senate"),
-        ("legiscan:TX:HB2127", today - timedelta(days=200), "introduced", "house"),
-        ("legiscan:TX:HB2127", today - timedelta(days=150), "passed_chamber", "house"),
-        ("legiscan:TX:HB2127", today - timedelta(days=100), "passed", "senate"),
-        ("legiscan:TX:HB2127", today - timedelta(days=60),  "signed",   None),
-        ("legiscan:TX:HB2127", today - timedelta(days=58),  "enacted",  None),
-        ("legistar:denver:22-1524", today - timedelta(days=90), "introduced", "council"),
-        ("legistar:denver:22-1524", today - timedelta(days=40), "committee",  "council"),
-        ("legistar:denver:22-1524", today - timedelta(days=5),  "passed",     "council"),
+        # DEMO-01 (passed_chamber)
+        ("demo:CO:DEMO-01", t - timedelta(days=120), "introduced", "senate"),
+        ("demo:CO:DEMO-01", t - timedelta(days=80),  "committee",  "senate"),
+        ("demo:CO:DEMO-01", t - timedelta(days=15),  "passed_chamber", "senate"),
+        # DEMO-02 (in_committee)
+        ("demo:CO:DEMO-02", t - timedelta(days=60),  "introduced", "house"),
+        ("demo:CO:DEMO-02", t - timedelta(days=20),  "committee",  "house"),
+        # DEMO-03 (passed)
+        ("demo:CO:DEMO-03", t - timedelta(days=150), "introduced", "senate"),
+        ("demo:CO:DEMO-03", t - timedelta(days=95),  "passed_chamber", "senate"),
+        ("demo:CO:DEMO-03", t - timedelta(days=30),  "passed", "house"),
+        # DEMO-04 (in_committee)
+        ("demo:CO:DEMO-04", t - timedelta(days=70),  "introduced", "house"),
+        ("demo:CO:DEMO-04", t - timedelta(days=25),  "committee",  "house"),
+        # DEMO-05 (introduced)
+        ("demo:CO:DEMO-05", t - timedelta(days=10),  "introduced", "house"),
+        # DEMO-06 (enacted)
+        ("demo:TX:DEMO-06", t - timedelta(days=400), "introduced", "house"),
+        ("demo:TX:DEMO-06", t - timedelta(days=320), "passed_chamber", "house"),
+        ("demo:TX:DEMO-06", t - timedelta(days=280), "passed", "senate"),
+        ("demo:TX:DEMO-06", t - timedelta(days=262), "signed", None),
+        ("demo:TX:DEMO-06", t - timedelta(days=260), "enacted", None),
+        # DEMO-07 (enacted)
+        ("demo:FL:DEMO-07", t - timedelta(days=320), "introduced", "house"),
+        ("demo:FL:DEMO-07", t - timedelta(days=260), "passed", "senate"),
+        ("demo:FL:DEMO-07", t - timedelta(days=220), "enacted", None),
+        # DEMO-08 (passed_chamber)
+        ("demo:FL:DEMO-08", t - timedelta(days=130), "introduced", "senate"),
+        ("demo:FL:DEMO-08", t - timedelta(days=40),  "passed_chamber", "senate"),
+        # DEMO-09 (passed)
+        ("demo:AZ:DEMO-09", t - timedelta(days=90),  "introduced", "house"),
+        ("demo:AZ:DEMO-09", t - timedelta(days=30),  "passed_chamber", "house"),
+        ("demo:AZ:DEMO-09", t - timedelta(days=5),   "passed", "senate"),
+        # DEMO-10 (enacted)
+        ("demo:UT:DEMO-10", t - timedelta(days=180), "introduced", "house"),
+        ("demo:UT:DEMO-10", t - timedelta(days=130), "passed", "senate"),
+        ("demo:UT:DEMO-10", t - timedelta(days=95),  "enacted", None),
+        # Denver DEMO-11 (passed)
+        ("demo:denver:DEMO-11", t - timedelta(days=220), "introduced", "council"),
+        ("demo:denver:DEMO-11", t - timedelta(days=185), "passed", "council"),
+        # Austin DEMO-12 (passed_chamber)
+        ("demo:austin:DEMO-12", t - timedelta(days=160), "introduced", "council"),
+        ("demo:austin:DEMO-12", t - timedelta(days=45),  "passed_chamber", "council"),
+        # Nashville DEMO-13 (in_committee)
+        ("demo:nashville:DEMO-13", t - timedelta(days=75), "introduced", "council"),
+        ("demo:nashville:DEMO-13", t - timedelta(days=15), "committee",  "council"),
     ]
     df = pd.DataFrame(rows, columns=["bill_id", "date", "event_type", "chamber"])
     df["date"] = pd.to_datetime(df["date"])
@@ -297,7 +251,14 @@ def geography_options(selected_states, selected_counties):
 
 
 def filter_bills(filters: dict) -> pd.DataFrame:
+    from config import STATUS_GROUP
+
     bills = load_bills().copy()
+
+    # Always enforce CRE-relevance — non-CRE bills are not surfaced in this app.
+    # `cre_relevant` is True, False, or None (unknown; before AI run treat as kept).
+    if "cre_relevant" in bills.columns:
+        bills = bills[bills["cre_relevant"].fillna(True).astype(bool)]
 
     states = filters.get("states") or []
     if states:
@@ -305,7 +266,8 @@ def filter_bills(filters: dict) -> pd.DataFrame:
 
     statuses = filters.get("statuses") or []
     if statuses:
-        bills = bills[bills["current_status"].isin(statuses)]
+        # Match the user's consolidated status bucket against each row's mapped group.
+        bills = bills[bills["current_status"].map(STATUS_GROUP).isin(statuses)]
 
     subjects = filters.get("subjects") or []
     if subjects:
@@ -321,12 +283,6 @@ def filter_bills(filters: dict) -> pd.DataFrame:
     if "ai_risk_score" in bills.columns:
         mask = bills["ai_risk_score"].fillna(0).between(risk[0], risk[1])
         bills = bills[mask]
-
-    cre_only = filters.get("cre_only", True)
-    if cre_only and "cre_relevant" in bills.columns:
-        # AI sets cre_relevant to True/False; before enrichment it's None (unknown) —
-        # keep unknowns visible so freshly-fetched bills are discoverable before AI runs.
-        bills = bills[bills["cre_relevant"].fillna(True).astype(bool)]
 
     start = pd.to_datetime(filters.get("start")) if filters.get("start") else None
     end = pd.to_datetime(filters.get("end")) if filters.get("end") else None

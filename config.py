@@ -101,17 +101,37 @@ NAV_HEIGHT = "56px"
 # ============================
 STATES = ["CO", "TX", "FL", "UT", "VA", "MD", "NV", "TN", "GA", "AZ", "ID"]
 
-BILL_STATUSES = [
-    "introduced",
-    "in_committee",
-    "passed_chamber",
-    "passed",
-    "signed",
-    "enacted",
-    "vetoed",
-    "failed",
-    "amended",
+# Four consolidated status buckets shown in the UI. Each raw LegiScan / LegiStar
+# status maps into one of these via STATUS_GROUP.
+STATUS_GROUPS = [
+    ("introduced",  "Introduced"),
+    ("committee",   "In Committee"),
+    ("passed",      "Passed Legislature"),
+    ("enacted",     "In Effect"),
+    ("failed",      "Failed / Vetoed"),
 ]
+STATUS_GROUP = {
+    "introduced":     "introduced",
+    "amended":        "introduced",
+    "in_committee":   "committee",
+    "committee":      "committee",
+    "passed_chamber": "passed",
+    "passed":         "passed",
+    "signed":         "passed",
+    "enacted":        "enacted",
+    "vetoed":         "failed",
+    "failed":         "failed",
+}
+# Stages in order — used to render the mini-progression bar inside each card.
+# "failed" is treated as a terminal off-ramp rendered as a gray dot.
+STAGE_ORDER = ["introduced", "committee", "passed", "enacted"]
+STAGE_LABELS = {
+    "introduced": "Intro",
+    "committee":  "Cmte",
+    "passed":     "Passed",
+    "enacted":    "Effect",
+    "failed":     "Failed",
+}
 
 # Status buckets + colors mirror the Milestone PPTX regulatory timeline deck
 # (etl-base-adjacent design; see "update timeline/card_templates.md").

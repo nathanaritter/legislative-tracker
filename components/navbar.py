@@ -1,7 +1,7 @@
 """
-Topnav — matches the Milestone Investments nav style used in analytics-workbench
-and contract-tracker. Gradient brand blue with the "The MILESTONE Group | App Name"
-pattern on the left and contextual pills on the right.
+Topnav — identical chrome to analytics-workbench / contract-tracker: gradient
+brand blue, tmg-logo, "The MILESTONE Group" wordmark, divider, app title,
+then `meta-pill` stats on the right populated by a callback.
 """
 
 from dash import html
@@ -18,19 +18,8 @@ def build_navbar():
                 ],
                 className="brand",
             ),
-            html.Div(
-                [
-                    html.Span(
-                        [html.I(className="bi bi-bank2"), html.Span(id="nav-pill-bills", children="— bills")],
-                        className="nav-pill",
-                    ),
-                    html.Span(
-                        [html.I(className="bi bi-clock-history"), html.Span(id="nav-pill-update", children="No updates yet")],
-                        className="nav-pill",
-                    ),
-                ],
-                className="pills",
-            ),
+            html.Div(id="navbar-metadata",
+                     style={"display": "flex", "alignItems": "center", "gap": "8px"}),
         ],
         className="app-topnav",
     )

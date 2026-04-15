@@ -2,6 +2,7 @@
 
 :root {
     --brand: #074070;
+    --brand-dark: #052F53;
     --brand-light: #B6D6EF;
     --accent: #589BD5;
     --gray-50: #f9fafb;
@@ -12,15 +13,14 @@
     --gray-700: #374151;
     --gray-900: #111827;
     --nav-height: 56px;
-    --sidebar-width: 300px;
-    --card-radius: 8px;
+    --sidebar-width: 272px;
+    --card-radius: 6px;
 
     /* Timeline status colors (mirrors PPTX card_templates.md) */
-    --s-in-effect:    #2E7D32;
-    --s-signed:       #1B5E83;
-    --s-introduced:   #6A4C93;
-    --s-killed:       #999999;
-    --s-election:     #8B6914;
+    --s-introduced: #6A4C93;
+    --s-passed:     #1B5E83;
+    --s-enacted:    #2E7D32;
+    --s-failed:     #999999;
 }
 
 html, body {
@@ -31,7 +31,7 @@ html, body {
     margin: 0;
 }
 
-/* ========== Topnav ========== */
+/* ========== Topnav (matches analytics-workbench / contract-tracker exactly) ========== */
 .app-topnav {
     height: var(--nav-height);
     background: linear-gradient(135deg, #074070 0%, #1a6fc4 50%, #2899e0 100%);
@@ -41,14 +41,9 @@ html, body {
     padding: 0 24px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     position: sticky;
-    top: 0; left: 0; right: 0;
-    z-index: 1030;
+    top: 0; z-index: 1030;
 }
-.app-topnav .brand {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
+.app-topnav .brand { display: flex; align-items: center; gap: 14px; }
 .app-topnav .brand img {
     height: 14px;
     filter: brightness(0) invert(1);
@@ -67,24 +62,25 @@ html, body {
     letter-spacing: 0.3px;
     line-height: 1;
 }
-.app-topnav .pills {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.nav-pill {
+
+/* Matches analytics-workbench `.meta-pill` so apps share one design language. */
+.meta-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.28);
+    gap: 4px;
+    padding: 3px 10px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 4px;
+    font-size: 11px;
     color: #fff;
-    font-size: 12px;
     font-weight: 500;
 }
-.nav-pill i { font-size: 12px; opacity: 0.9; }
+.meta-pill i { font-size: 12px; opacity: 0.9; }
+.meta-pill--error {
+    background: rgba(220, 53, 69, 0.35) !important;
+    border-color: rgba(220, 53, 69, 0.6) !important;
+}
 
 /* ========== Shell ========== */
 .app-shell {
@@ -95,84 +91,117 @@ html, body {
     width: var(--sidebar-width);
     background: #fff;
     border-right: 1px solid var(--gray-200);
-    padding: 16px 14px 40px 14px;
+    padding: 14px 14px 32px 14px;
     overflow-y: auto;
     flex-shrink: 0;
 }
-.app-sidebar h6 {
+.app-sidebar h6, .app-sidebar .h6-inline {
     color: var(--gray-700);
     text-transform: uppercase;
     font-size: 10px;
     letter-spacing: 0.06em;
     font-weight: 600;
-    margin-top: 14px;
+    margin-top: 12px;
     margin-bottom: 4px;
 }
 .app-sidebar h6:first-child { margin-top: 0; }
+.app-sidebar .h6-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-top: 12px;
+    margin-bottom: 4px;
+}
+.app-sidebar .h6-row .h6-inline { margin: 0; }
+.app-sidebar .range-readout {
+    font-size: 11px;
+    color: var(--brand);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Date preset chips row */
+.date-preset-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    margin-bottom: 6px;
+}
+.date-preset-btn {
+    padding: 2px 0 !important;
+    font-size: 10px !important;
+    border-radius: 4px !important;
+    min-width: 0 !important;
+    font-weight: 600 !important;
+}
+.date-preset-btn.active {
+    background: var(--brand) !important;
+    color: #fff !important;
+    border-color: var(--brand) !important;
+}
 .app-main {
     flex: 1;
-    padding: 20px 24px;
+    padding: 14px 20px;
     overflow-x: auto;
     min-width: 0;
 }
 
-/* ========== Title band (mirrors PPTX) ========== */
+/* ========== Title band (compact) ========== */
 .deck-title-bar {
-    background: #EEEEEE;
-    border-radius: 6px;
-    padding: 14px 20px;
+    background: #fff;
+    border-radius: var(--card-radius);
+    padding: 8px 14px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
     border: 1px solid var(--gray-200);
 }
 .deck-title-bar .title {
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 600;
     color: var(--gray-900);
-    letter-spacing: -0.2px;
 }
 .deck-title-bar .subtitle {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--gray-500);
-    margin-top: 2px;
+    margin-top: 1px;
 }
 .deck-title-bar .legend {
-    display: grid;
-    grid-template-columns: repeat(3, auto);
-    gap: 4px 18px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
     font-size: 11px;
     color: var(--gray-700);
 }
-.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-item { display: flex; align-items: center; gap: 5px; }
 .legend-dot {
     display: inline-block;
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.9);
 }
 
-/* ========== Card (outer panel) ========== */
+/* ========== Outer card ========== */
 .card {
     background: #fff;
     border-radius: var(--card-radius);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-    padding: 14px 16px;
-    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    padding: 12px 14px;
+    margin-bottom: 10px;
     border: 1px solid var(--gray-200);
 }
 .card h5 {
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
-    color: var(--gray-700);
-    margin: 0 0 10px 0;
+    color: var(--gray-500);
+    margin: 0 0 8px 0;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
-/* ========== Bill cards on the timeline ========== */
+/* ========== Timeline ========== */
 .timeline-wrap {
     position: relative;
     width: 100%;
@@ -180,29 +209,28 @@ html, body {
 }
 .timeline-canvas {
     position: relative;
-    height: 1010px;
-    min-width: 1400px;   /* updated by callback when date range widens */
+    height: 560px;
+    min-width: 1400px;
 }
 .timeline-axis {
     position: absolute;
     left: 0;
     right: 0;
-    top: 505px;
+    top: 280px;
     height: 2px;
     background: var(--gray-500);
 }
 .timeline-tick {
     position: absolute;
-    top: 497px;
+    top: 272px;
     width: 2px;
     background: var(--gray-500);
 }
 .timeline-tick-label {
     position: absolute;
-    top: 519px;
+    top: 294px;
     transform: translateX(-50%);
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 10px;
     color: var(--gray-700);
     white-space: nowrap;
 }
@@ -222,8 +250,8 @@ html, body {
 }
 .bill-card {
     position: absolute;
-    width: 210px;
-    height: 156px;
+    width: 188px;
+    height: 96px;
     background: #fff;
     border-radius: 6px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -232,6 +260,7 @@ html, body {
     cursor: pointer;
     transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
     z-index: 3;
+    font-size: 11px;
 }
 .bill-card:hover {
     transform: translateY(-1px);
@@ -242,73 +271,337 @@ html, body {
     outline-offset: 1px;
 }
 .bill-card .header {
-    padding: 4px 10px;
+    padding: 5px 10px;
+    color: #fff;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 700;
 }
-.bill-card .header .date {
-    font-style: italic;
+.bill-card .header .stage-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 10px;
+}
+.bill-card .header .stage-date {
     font-weight: 500;
     font-size: 10px;
+    font-style: italic;
+    margin-right: 6px;
+    flex: 1;
+    text-align: right;
 }
-.bill-card .subtitle {
-    padding: 6px 10px 2px 10px;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 1.2;
-    min-height: 28px;
-}
-.bill-card .body {
-    padding: 2px 10px 10px 10px;
-    font-size: 11px;
-    color: var(--gray-900);
-    line-height: 1.35;
-}
-.bill-card .body li { margin-left: -18px; }
-.bill-card .footer-row {
-    padding: 4px 10px 8px 10px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 10px;
-    color: var(--gray-500);
-    border-top: 1px dashed var(--gray-200);
-}
-.risk-badge {
+.bill-card .header .stage-score {
     display: inline-flex;
     align-items: center;
-    padding: 1px 6px;
-    border-radius: 9px;
-    font-weight: 700;
+    gap: 3px;
     font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 9px;
     color: #fff;
+    letter-spacing: 0.02em;
+    min-width: 20px;
+    text-align: center;
+    background: rgba(255,255,255,0.22);
+    border: 1px solid rgba(255,255,255,0.55);
 }
-.risk-low { background: #059669; }
-.risk-mid { background: #d97706; }
-.risk-high { background: #dc2626; }
+.stage-score .dir { font-size: 9px; line-height: 1; }
+.stage-score .dir-favorable { color: #b9f6b2; }
+.stage-score .dir-adverse { color: #ffb3b3; }
+.stage-score .dir-mixed { color: #ffe08a; }
+.stage-score .dir-neutral, .stage-score .dir-unk { color: rgba(255,255,255,0.8); }
 
-/* ========== Dropdowns / controls polish ========== */
+/* Zoom controls */
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+}
+.zoom-controls .zoom-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    font-weight: 600;
+    margin-right: 6px;
+}
+.zoom-btn {
+    background: #fff;
+    border: 1px solid var(--gray-300);
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1.2;
+}
+.zoom-btn:hover {
+    background: var(--gray-100);
+    color: var(--brand);
+    border-color: var(--brand);
+}
+.bill-card .body {
+    padding: 6px 10px 2px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.2;
+}
+.bill-card .body .bill-num {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gray-900);
+    letter-spacing: 0.02em;
+}
+.bill-card .body .bill-title {
+    font-size: 11px;
+    color: var(--gray-900);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.25;
+}
+.bill-card .subtitle {
+    padding: 5px 9px 2px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--gray-900);
+    min-height: 26px;
+}
+.bill-card .juris {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 6px;
+    font-size: 10px;
+    color: var(--gray-500);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bill-card .progress-strip {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 26px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 12px;
+}
+.bill-card .progress-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    font-size: 0;
+}
+.bill-card .progress-stage .node {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1.5px solid var(--gray-300);
+    z-index: 2;
+}
+.bill-card .progress-stage.reached .node {
+    background: currentColor;
+    border-color: currentColor;
+}
+.bill-card .progress-stage.current .node {
+    transform: scale(1.3);
+    box-shadow: 0 0 0 3px rgba(7, 64, 112, 0.12);
+}
+.bill-card .progress-stage.failed .node {
+    background: var(--s-failed);
+    border-color: var(--s-failed);
+}
+.bill-card .progress-stage::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    right: -50%;
+    top: 50%;
+    height: 2px;
+    background: var(--gray-300);
+    z-index: 1;
+}
+.bill-card .progress-stage.reached + .progress-stage.reached::before,
+.bill-card .progress-stage.reached::after {
+    background: currentColor;
+}
+.bill-card .progress-stage:last-child::after { display: none; }
+.bill-card .progress-labels {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    display: flex;
+    align-items: center;
+    font-size: 9px;
+    color: var(--gray-500);
+}
+.bill-card .progress-labels span {
+    flex: 1;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bill-card .progress-labels span.current {
+    color: var(--gray-900);
+    font-weight: 700;
+}
+.bill-card .risk-chip {
+    position: absolute;
+    right: 6px;
+    top: 6px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* ========== Right-side bill legend ========== */
+.bill-legend {
+    width: 240px;
+    flex-shrink: 0;
+    background: #fff;
+    border-left: 1px solid var(--gray-200);
+    overflow-y: auto;
+    padding: 10px 12px;
+}
+.bill-legend h5 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    margin: 0 0 8px 0;
+    font-weight: 600;
+}
+.bill-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.bill-legend-item:hover { background: var(--gray-50); }
+.bill-legend-item .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.bill-legend-item .label {
+    font-size: 11px;
+    color: var(--gray-900);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bill-legend-item.hidden .label { color: var(--gray-300); text-decoration: line-through; }
+.bill-legend-item.hidden .swatch { opacity: 0.25; }
+
+/* ========== Dropdown / slider / date picker polish ========== */
 .Select-control,
 .Select-menu-outer,
 .dash-dropdown .Select-control {
     border-color: var(--gray-300) !important;
     font-size: 12px !important;
-    min-height: 32px !important;
+    min-height: 30px !important;
 }
-.Select-placeholder, .Select-value-label {
-    font-size: 12px !important;
-}
+.Select-placeholder, .Select-value-label { font-size: 12px !important; }
 .filter-row { margin-bottom: 8px; }
-.filter-row label {
-    font-size: 11px;
-    color: var(--gray-700);
-    font-weight: 500;
-    display: block;
-    margin-bottom: 2px;
+
+/* Dark-blue risk slider */
+.brand-slider .rc-slider-track {
+    background-color: var(--brand) !important;
+    height: 6px !important;
+}
+.brand-slider .rc-slider-rail {
+    background-color: var(--gray-200) !important;
+    height: 6px !important;
+}
+.brand-slider .rc-slider-handle {
+    border: 2px solid var(--brand) !important;
+    background: #fff !important;
+    width: 14px !important;
+    height: 14px !important;
+    margin-top: -4px !important;
+    opacity: 1 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15) !important;
+}
+.brand-slider .rc-slider-handle:hover,
+.brand-slider .rc-slider-handle:focus {
+    border-color: var(--brand-dark) !important;
+    box-shadow: 0 0 0 3px rgba(7,64,112,0.15) !important;
+}
+.brand-slider .rc-slider-mark-text {
+    font-size: 10px !important;
+    color: var(--gray-500) !important;
+}
+.brand-slider .rc-slider-tooltip-inner {
+    background: var(--brand) !important;
+    color: #fff !important;
+    border-radius: 3px !important;
+    padding: 2px 6px !important;
+    font-size: 10px !important;
+}
+.brand-slider .rc-slider-tooltip-arrow { border-top-color: var(--brand) !important; }
+
+/* Two DatePickerSingle side by side for the start/end range */
+.date-range-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+/* Date picker — tighter, brand-colored focus */
+.brand-datepicker { width: 100% !important; }
+.brand-datepicker .SingleDatePicker,
+.brand-datepicker .SingleDatePickerInput { width: 100% !important; display: block !important; }
+.brand-datepicker .DateInput,
+.brand-datepicker .DateInput_input {
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+    line-height: 1.3 !important;
+    background: #fff !important;
+}
+.brand-datepicker .DateRangePickerInput {
+    border: 1px solid var(--gray-300) !important;
+    border-radius: 4px !important;
+    width: 100% !important;
+    overflow: hidden;
+}
+.brand-datepicker .DateRangePickerInput_arrow svg { height: 14px !important; width: 14px !important; fill: var(--gray-500) !important; }
+.brand-datepicker .DateInput__focused { outline: none !important; }
+.CalendarDay__selected,
+.CalendarDay__selected:active,
+.CalendarDay__selected:hover {
+    background: var(--brand) !important;
+    border: 1px double var(--brand-dark) !important;
+    color: #fff !important;
+}
+.CalendarDay__selected_span {
+    background: var(--brand-light) !important;
+    border: 1px double var(--brand-light) !important;
+    color: var(--brand-dark) !important;
 }
 
 .btn-outline-secondary {
@@ -320,9 +613,92 @@ html, body {
     color: var(--gray-900) !important;
 }
 
-/* ========== Modal polish ========== */
+/* ========== Modal ========== */
 .modal-title {
     color: var(--brand);
     font-weight: 600;
-    font-size: 16px;
+    font-size: 15px;
+}
+.risk-summary-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background: var(--gray-50);
+    border-radius: 6px;
+    border: 1px solid var(--gray-200);
+}
+.risk-summary-score {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: #fff;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.risk-summary-score .value { font-size: 26px; line-height: 1; }
+.risk-summary-score .suffix { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; opacity: 0.85; }
+.direction-badge {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    flex-shrink: 0;
+}
+.direction-glyph { font-size: 16px; line-height: 1; }
+.direction-label { font-size: 10px; font-weight: 600; color: var(--gray-700); letter-spacing: 0.02em; text-transform: uppercase; white-space: nowrap; }
+.direction-glyph.dir-favorable { color: #059669; }
+.direction-glyph.dir-adverse { color: #dc2626; }
+.direction-glyph.dir-mixed { color: #d97706; }
+.direction-glyph.dir-neutral { color: var(--gray-500); }
+.risk-breakdown { display: flex; flex-direction: column; gap: 10px; }
+.risk-row { display: grid; grid-template-columns: 150px 1fr 54px; gap: 10px; align-items: center; }
+.risk-row .name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gray-900);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.risk-row .desc { font-size: 11px; color: var(--gray-500); grid-column: 1 / -1; margin-top: -6px; }
+.risk-row .bar-track {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--gray-200);
+    overflow: hidden;
+}
+.risk-row .bar-fill {
+    height: 100%;
+    background: var(--brand);
+    border-radius: 4px;
+}
+.risk-row .score { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--gray-900); font-size: 11px; }
+.risk-rationale {
+    font-size: 11px;
+    color: var(--gray-700);
+    line-height: 1.4;
+    padding: 6px 0 0 2px;
+    grid-column: 1 / -1;
+    border-left: 2px solid var(--brand-light);
+    padding-left: 10px;
+    margin-top: 4px;
+}
+
+.modal-section-heading {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gray-500);
+    font-weight: 600;
+    margin: 14px 0 6px 0;
 }

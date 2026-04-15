@@ -1,146 +1,105 @@
 """
-Card-based timeline modelled on the Milestone regulatory deck (see PPTX reference:
-`Desktop/update timeline/Regulatory Update Summary CO v4.pptx`).
+Card-based timeline where **every stage of every bill** is its own card.
 
-The timeline is rendered as absolute-positioned HTML elements on a canvas:
+A bill that moves Introduced → Committee → Passed → Enacted renders as 4 cards
+on the timeline, each at the date of that stage transition. Clicking any card
+opens the detail modal for the parent bill.
 
-    . . . . . . . . . [bill card]
-                          |  (connector)
-    ======================●==================   axis (dots = status color)
-                                       |
-                                   [bill card]
-
-Each bill occupies a slot at x = fraction of the date range, and rows cycle
-through 4 slots (two above, two below) to avoid overlap. Cards carry their
-bill_id in a pattern-matching callback so clicks open the detail modal.
-
-The implementation intentionally avoids Plotly — the card visual is too specific
-to fake with go.Bar / go.Scatter and the HTML approach gives pixel-perfect
-parity with the PPTX.
+Each card is colored by the stage bucket and shows:
+  - stage name + date in the header (the "date means" the stage date)
+  - bill number + short title in the body
+  - jurisdiction
+  - risk chip
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from datetime import datetime, date
-from typing import Iterable
 
 import pandas as pd
 from dash import html
 
-from config import STATUS_COLOR, GRAY_500
+from config import STATUS_GROUP, STAGE_LABELS, GRAY_500
 
 
-# --- Layout parameters (keep in sync with styles.css .timeline-canvas etc.) ---
-CANVAS_HEIGHT = 1010
-AXIS_Y = 505
-CARD_W = 210
-CARD_H = 156
-ROW_GAP = 10
-# Six stacking rows — three above, three below. Card bottom must clear the axis.
-ROWS = [
-    (10,  "above_far"),    # bottom 166
-    (176, "above_mid"),    # bottom 332
-    (342, "above_near"),   # bottom 498 (axis at 505)
-    (525, "below_near"),   # bottom 681
-    (691, "below_mid"),    # bottom 847
-    (857, "below_far"),    # bottom 1013
-]
+# Canvas / row geometry
+CANVAS_HEIGHT = 560
+AXIS_Y = 280
+CARD_W = 188
+CARD_H = 96
 MIN_CANVAS_WIDTH = 1400
-MARGIN_X = 36
+MARGIN_X = 30
 PIXELS_PER_DAY_TARGET = 5.2
-MAX_CANVAS_WIDTH = 12000
+MAX_CANVAS_WIDTH = 14000
+
+# Tops chosen so the card-bottom → axis connector is visible (~80px) and cards
+# never overlap vertically when stacked. Two rows above / two below.
+ROWS = [
+    (100, "above_near"),   # bottom 196, axis at 280 (84px connector)
+    (0,   "above_far"),    # bottom 96
+    (340, "below_near"),
+    (440, "below_far"),
+]
+
+
+STAGE_COLORS = {
+    "introduced": "#6A4C93",
+    "committee":  "#6A4C93",
+    "passed":     "#1B5E83",
+    "enacted":    "#2E7D32",
+    "failed":     "#999999",
+}
 
 
 @dataclass
-class Placement:
+class EventCard:
     bill_id: str
-    x_px: int
-    row: int   # index into ROWS
+    event_date: pd.Timestamp
+    stage_group: str     # introduced/committee/passed/enacted/failed
+    raw_event_type: str
+    x_px: int = 0
+    row: int = 0
 
 
-def _status_color(status: str) -> str:
-    return STATUS_COLOR.get(status, "#6A4C93")
-
-
-def _short_title(title: str, n: int = 52) -> str:
+def _short_title(title: str, n: int = 50) -> str:
     if not title:
         return ""
     title = str(title).strip()
     return title if len(title) <= n else title[: n - 1] + "…"
 
 
-def _summary_to_bullets(summary: str, max_bullets: int = 3, max_chars: int = 110) -> list[str]:
-    if not summary:
-        return []
-    # Prefer explicit bullets / newlines; fall back to sentence split.
-    lines = [l.strip(" -•\t") for l in str(summary).split("\n") if l.strip()]
-    if len(lines) <= 1:
-        parts = [p.strip() for p in str(summary).split(". ") if p.strip()]
-        lines = [p.rstrip(".") for p in parts]
-    cleaned = []
-    for line in lines:
-        if not line:
-            continue
-        line = line if len(line) <= max_chars else line[: max_chars - 1] + "…"
-        cleaned.append(line)
-        if len(cleaned) >= max_bullets:
-            break
-    return cleaned
-
-
-def _pack_rows(bills: pd.DataFrame, x_px_by_id: dict[str, int], min_gap: int = CARD_W + 12) -> tuple[list[Placement], int]:
-    """Greedy row assignment: for each bill (sorted by date), place in the first row
-    whose last-placed card ends ≥ min_gap before this bill's x.
-
-    Bills that don't fit (canvas too narrow for the cluster) are dropped and the count
-    of drops is returned so the caller can surface a hint in the meta line.
-    """
-    placements: list[Placement] = []
-    row_last_x: list[int] = [-10_000] * len(ROWS)
+def _pack_rows(cards, min_gap=CARD_W + 10):
+    row_last = [-10_000] * len(ROWS)
     dropped = 0
-    for _, row in bills.iterrows():
-        bill_id = row["bill_id"]
-        x = x_px_by_id[bill_id]
+    for c in cards:
         chosen = None
-        for idx, last in enumerate(row_last_x):
-            if x - last >= min_gap:
-                chosen = idx
+        for i, last in enumerate(row_last):
+            if c.x_px - last >= min_gap:
+                chosen = i
                 break
         if chosen is None:
             dropped += 1
+            c.row = -1
             continue
-        row_last_x[chosen] = x
-        placements.append(Placement(bill_id=bill_id, x_px=x, row=chosen))
-    return placements, dropped
+        row_last[chosen] = c.x_px
+        c.row = chosen
+    return [c for c in cards if c.row >= 0], dropped
 
 
-def _canvas_width_for(bills: pd.DataFrame, d_min: pd.Timestamp, d_max: pd.Timestamp,
-                     min_gap: int = CARD_W + 12, rows: int = len(ROWS)) -> int:
-    """Pick a canvas width that guarantees no bill cluster exceeds the row budget.
-
-    If the densest `min_gap`-wide window holds ≤ rows bills, baseline width stands.
-    Otherwise scale up so the densest window holds exactly `rows` bills.
-    """
+def _canvas_width_for(event_dates, d_min, d_max, min_gap=CARD_W + 10, rows=len(ROWS), zoom=1.0):
     total_days = max(1, (d_max - d_min).days)
-    base_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET))
-
-    if bills is None or bills.empty:
+    base_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET * zoom))
+    if not event_dates:
         return base_w
-
-    dates = bills["_primary_date"].sort_values().reset_index(drop=True)
+    dates = sorted(event_dates)
     if len(dates) <= rows:
         return base_w
-
-    # Iterate: widening the canvas shrinks window_days, which can change max_cluster,
-    # so re-run the density check up to a few times until it stabilizes or hits cap.
     canvas_w = base_w
     for _ in range(6):
-        usable_w = canvas_w - 2 * MARGIN_X
-        px_per_day = usable_w / total_days
-        window_days = (min_gap / px_per_day) if px_per_day > 0 else total_days
-
+        usable = canvas_w - 2 * MARGIN_X
+        px_per_day = usable / total_days
+        window_days = min_gap / px_per_day if px_per_day else total_days
         max_cluster = 1
         j = 0
         for i in range(len(dates)):
@@ -149,127 +108,135 @@ def _canvas_width_for(bills: pd.DataFrame, d_min: pd.Timestamp, d_max: pd.Timest
             while j < len(dates) and (dates[j] - dates[i]).days < window_days:
                 j += 1
             max_cluster = max(max_cluster, j - i)
-
         if max_cluster <= rows:
             return min(canvas_w, MAX_CANVAS_WIDTH)
-
         canvas_w = int(canvas_w * (max_cluster / rows))
         if canvas_w >= MAX_CANVAS_WIDTH:
             return MAX_CANVAS_WIDTH
-
     return min(canvas_w, MAX_CANVAS_WIDTH)
 
 
-def _tick_positions(d_min: pd.Timestamp, d_max: pd.Timestamp, canvas_w: int) -> list[tuple[str, int, bool]]:
-    """Return list of (label, x_px, is_major) for axis ticks.
-    Major ticks = year starts. Minor ticks = month starts when zoomed in enough.
-    """
+def _tick_positions(d_min, d_max, canvas_w):
     total_days = max(1, (d_max - d_min).days)
     span_years = (d_max.year - d_min.year) + 1
     show_months = span_years <= 3
-
-    ticks: list[tuple[str, int, bool]] = []
+    usable = canvas_w - 2 * MARGIN_X
+    ticks = []
     cursor = pd.Timestamp(d_min.year, 1, 1)
     while cursor <= d_max:
         frac = (cursor - d_min).days / total_days
-        x = MARGIN_X + int(frac * (canvas_w - 2 * MARGIN_X))
+        x = MARGIN_X + int(frac * usable)
         if cursor >= d_min:
             ticks.append((str(cursor.year), x, True))
-        # advance to next January 1
         cursor = pd.Timestamp(cursor.year + 1, 1, 1)
-
     if show_months:
         cursor = pd.Timestamp(d_min.year, d_min.month, 1)
         while cursor <= d_max:
             if cursor.month != 1 and cursor >= d_min:
                 frac = (cursor - d_min).days / total_days
-                x = MARGIN_X + int(frac * (canvas_w - 2 * MARGIN_X))
+                x = MARGIN_X + int(frac * usable)
                 ticks.append((cursor.strftime("%b"), x, False))
-            # advance one month
             nm = cursor.month + 1
             ny = cursor.year + (1 if nm > 12 else 0)
             nm = 1 if nm > 12 else nm
             cursor = pd.Timestamp(ny, nm, 1)
-
     return ticks
 
 
-def _card(bill: dict, top: int, left: int) -> html.Div:
-    status = bill.get("current_status") or "introduced"
-    color = _status_color(status)
-
-    date_val = bill.get("last_action_date") or bill.get("introduced_date")
+def _risk_chip(score):
     try:
-        date_str = pd.to_datetime(date_val).strftime("%b %d, %Y")
+        s = float(score) if score is not None and not pd.isna(score) else None
     except Exception:
-        date_str = ""
+        s = None
+    if s is None:
+        return None
+    bg = "#059669" if s < 40 else "#d97706" if s < 70 else "#dc2626"
+    return html.Span(f"{s:.0f}", className="risk-chip", style={"background": bg})
 
-    bullets = _summary_to_bullets(bill.get("ai_summary", ""))
-    if not bullets:
-        # fall back to a short title-based line when AI hasn't run yet
-        desc = _short_title(bill.get("title", ""), 200)
-        if desc:
-            bullets = [desc]
 
-    score = bill.get("ai_risk_score")
-    try:
-        score_num = float(score) if score is not None and not pd.isna(score) else None
-    except Exception:
-        score_num = None
-    if score_num is None:
-        badge = html.Span("—", className="risk-badge risk-low", style={"background": "#9ca3af"})
-    elif score_num < 40:
-        badge = html.Span(f"{score_num:.0f}", className="risk-badge risk-low")
-    elif score_num < 70:
-        badge = html.Span(f"{score_num:.0f}", className="risk-badge risk-mid")
-    else:
-        badge = html.Span(f"{score_num:.0f}", className="risk-badge risk-high")
+def _stage_card(card: EventCard, bill: dict, top: int, left: int) -> html.Div:
+    color = STAGE_COLORS.get(card.stage_group, "#6A4C93")
+    stage_label = STAGE_LABELS.get(card.stage_group, card.stage_group.title())
+    # Short date — "Mar 06 '25" — so it fits alongside the stage chip + risk chip.
+    date_str = card.event_date.strftime("%b %d '%y")
 
-    state_label = f"{bill.get('state','')} · {bill.get('jurisdiction_name','')}".strip(" ·")
+    header_children = [
+        html.Span(stage_label, className="stage-label"),
+        html.Span(date_str, className="stage-date"),
+    ]
+    chip = _risk_chip_inline(bill.get("ai_risk_score"), bill.get("impact_direction"))
+    if chip is not None:
+        header_children.append(chip)
+
+    children = [
+        html.Div(header_children, className="header", style={"background": color}),
+        html.Div(
+            [
+                html.Span(bill.get("bill_number", ""), className="bill-num"),
+                html.Span(_short_title(bill.get("title", ""), 50), className="bill-title"),
+            ],
+            className="body",
+        ),
+        html.Div(bill.get("jurisdiction_name", ""), className="juris"),
+    ]
 
     return html.Div(
-        [
-            html.Div(
-                [
-                    html.Span(bill.get("bill_number", "")),
-                    html.Span(date_str, className="date"),
-                ],
-                className="header",
-                style={"background": color},
-            ),
-            html.Div(
-                _short_title(bill.get("title", ""), 72),
-                className="subtitle",
-                style={"color": color},
-            ),
-            html.Div(
-                [html.Div(f"• {b}", style={"marginBottom": "2px"}) for b in bullets]
-                if bullets
-                else html.Span("Summary pending", style={"color": GRAY_500, "fontStyle": "italic"}),
-                className="body",
-            ),
-            html.Div(
-                [
-                    html.Span(state_label, style={"overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"}),
-                    badge,
-                ],
-                className="footer-row",
-            ),
-        ],
+        children,
         className="bill-card",
-        id={"type": "bill-card", "bill_id": bill["bill_id"]},
+        id={"type": "bill-card", "bill_id": bill["bill_id"], "event": card.raw_event_type,
+             "date": card.event_date.strftime("%Y-%m-%d")},
         n_clicks=0,
         style={"top": f"{top}px", "left": f"{left}px"},
     )
 
 
+DIRECTION_GLYPH = {
+    "favorable": "▲",
+    "adverse":   "▼",
+    "mixed":     "◆",
+    "neutral":   "●",
+}
+
+
+def _risk_chip_inline(score, direction=None):
+    """Small header-inline chip showing impact magnitude + direction glyph."""
+    try:
+        s = float(score) if score is not None and not pd.isna(score) else None
+    except Exception:
+        s = None
+    if s is None:
+        return None
+    d = (direction or "").lower()
+    glyph = DIRECTION_GLYPH.get(d, "")
+    return html.Span(
+        [html.Span(f"{s:.0f}"), html.Span(glyph, className=f"dir dir-{d or 'unk'}")],
+        className="stage-score",
+    )
+
+
 def build_timeline_card_area():
-    """Outer card + scrollable canvas. Contents are filled by the timeline callback."""
+    zoom_controls = html.Div(
+        [
+            html.Span("Zoom", className="zoom-label"),
+            html.Button("−", id="zoom-out-btn", className="zoom-btn", title="Squish (less pixels/day)"),
+            html.Button("Fit", id="zoom-fit-btn", className="zoom-btn", title="Reset zoom"),
+            html.Button("+", id="zoom-in-btn", className="zoom-btn", title="Expand (more pixels/day)"),
+        ],
+        className="zoom-controls",
+    )
+    header_row = html.Div(
+        [
+            html.H5("Bill progression timeline", style={"margin": 0}),
+            zoom_controls,
+        ],
+        style={"display": "flex", "alignItems": "center", "justifyContent": "space-between",
+                "marginBottom": "6px"},
+    )
     return html.Div(
         [
-            html.H5("Legislation timeline"),
+            header_row,
             html.Div(id="timeline-meta",
-                     style={"fontSize": "11px", "color": GRAY_500, "marginBottom": "10px"}),
+                     style={"fontSize": "11px", "color": GRAY_500, "marginBottom": "8px"}),
             html.Div(
                 html.Div(id="timeline-canvas", className="timeline-canvas"),
                 className="timeline-wrap",
@@ -279,8 +246,49 @@ def build_timeline_card_area():
     )
 
 
-def render_timeline(bills: pd.DataFrame) -> tuple[list, str]:
-    """Return (children, meta_text) for the timeline canvas."""
+def _collect_events(bills: pd.DataFrame, events: pd.DataFrame) -> list[EventCard]:
+    """Build one EventCard per bill stage event. If a bill has no events (e.g.
+    only introduced_date), fall back to a single introduced card."""
+    cards: list[EventCard] = []
+    bills_by_id = {r["bill_id"]: r for _, r in bills.iterrows()}
+
+    if events is not None and not events.empty:
+        for _, e in events.iterrows():
+            bid = e["bill_id"]
+            if bid not in bills_by_id:
+                continue
+            group = STATUS_GROUP.get(e.get("event_type") or "", None)
+            if group is None:
+                continue
+            d = pd.to_datetime(e.get("date"), errors="coerce")
+            if pd.isna(d):
+                continue
+            cards.append(EventCard(
+                bill_id=bid,
+                event_date=d,
+                stage_group=group,
+                raw_event_type=e.get("event_type"),
+            ))
+
+    billed = {c.bill_id for c in cards}
+    for bid, row in bills_by_id.items():
+        if bid in billed:
+            continue
+        d = pd.to_datetime(row.get("introduced_date"), errors="coerce")
+        if pd.isna(d):
+            continue
+        cards.append(EventCard(
+            bill_id=bid,
+            event_date=d,
+            stage_group="introduced",
+            raw_event_type="introduced",
+        ))
+
+    cards.sort(key=lambda c: c.event_date)
+    return cards
+
+
+def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoom: float = 1.0):
     if bills is None or bills.empty:
         return (
             [html.Div("No bills match the current filters.",
@@ -289,62 +297,48 @@ def render_timeline(bills: pd.DataFrame) -> tuple[list, str]:
             "0 bills",
         )
 
-    bills = bills.copy()
-    bills["_primary_date"] = pd.to_datetime(bills["last_action_date"].fillna(bills["introduced_date"]), errors="coerce")
-    bills = bills.dropna(subset=["_primary_date"]).sort_values("_primary_date").reset_index(drop=True)
-    if bills.empty:
-        return [], "0 bills with a valid date"
+    cards = _collect_events(bills, events if events is not None else pd.DataFrame())
+    if not cards:
+        return [], "0 stage events"
 
-    d_min, d_max = bills["_primary_date"].min(), bills["_primary_date"].max()
-    # Add a month of padding on each side so cards at the edges don't get cut off.
-    d_min = d_min - pd.Timedelta(days=20)
-    d_max = d_max + pd.Timedelta(days=20)
+    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=20)
+    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=20)
     total_days = max(1, (d_max - d_min).days)
 
-    canvas_w = _canvas_width_for(bills, d_min, d_max)
+    canvas_w = _canvas_width_for([c.event_date for c in cards], d_min, d_max, zoom=zoom)
     usable_w = canvas_w - 2 * MARGIN_X
 
-    x_px_by_id: dict[str, int] = {}
-    for _, row in bills.iterrows():
-        frac = (row["_primary_date"] - d_min).days / total_days
-        x_px_by_id[row["bill_id"]] = MARGIN_X + int(frac * usable_w)
+    for c in cards:
+        frac = (c.event_date - d_min).days / total_days
+        c.x_px = MARGIN_X + int(frac * usable_w)
 
-    placements, dropped = _pack_rows(bills, x_px_by_id)
+    cards, dropped = _pack_rows(cards)
 
-    children: list = []
+    children = [html.Div(className="timeline-axis",
+                         style={"left": f"{MARGIN_X}px", "right": f"{MARGIN_X}px"})]
 
-    # Axis line
-    children.append(html.Div(className="timeline-axis",
-                              style={"left": f"{MARGIN_X}px", "right": f"{MARGIN_X}px"}))
-
-    # Ticks (absolute top comes from CSS; inline height distinguishes major/minor)
     for label, x, is_major in _tick_positions(d_min, d_max, canvas_w):
         children.append(html.Div(className="timeline-tick",
                                   style={"left": f"{x}px",
                                           "height": "18px" if is_major else "10px",
-                                          "top": "497px" if is_major else "501px"}))
+                                          "top": "272px" if is_major else "276px"}))
         children.append(html.Div(label, className="timeline-tick-label",
                                   style={"left": f"{x}px",
                                           "fontSize": "11px" if is_major else "10px",
-                                          "fontWeight": "600" if is_major else "500",
-                                          "color": GRAY_500 if not is_major else "#374151"}))
+                                          "fontWeight": "600" if is_major else "500"}))
 
-    # Cards + dots + connectors
     bills_by_id = {r["bill_id"]: r for _, r in bills.iterrows()}
-    for p in placements:
-        bill = bills_by_id[p.bill_id].to_dict() if hasattr(bills_by_id[p.bill_id], "to_dict") else bills_by_id[p.bill_id]
-        color = _status_color(bill.get("current_status") or "introduced")
-        row_top, anchor = ROWS[p.row]
 
-        # Card
-        children.append(_card(bill, top=row_top, left=p.x_px - CARD_W // 2))
+    for c in cards:
+        bill = bills_by_id[c.bill_id]
+        bill_dict = bill.to_dict() if hasattr(bill, "to_dict") else bill
+        color = STAGE_COLORS.get(c.stage_group, "#6A4C93")
+        row_top, anchor = ROWS[c.row]
 
-        # Axis dot
+        children.append(_stage_card(c, bill_dict, top=row_top, left=c.x_px - CARD_W // 2))
         children.append(html.Div(className="timeline-dot",
-                                  style={"left": f"{p.x_px}px", "top": f"{AXIS_Y}px",
+                                  style={"left": f"{c.x_px}px", "top": f"{AXIS_Y}px",
                                           "background": color}))
-
-        # Connector line from axis to card
         if anchor.startswith("above"):
             top = row_top + CARD_H
             height = AXIS_Y - top
@@ -355,29 +349,25 @@ def render_timeline(bills: pd.DataFrame) -> tuple[list, str]:
             y = top
         if height > 0:
             children.append(html.Div(className="timeline-connector",
-                                      style={"left": f"{p.x_px}px",
+                                      style={"left": f"{c.x_px}px",
                                               "top": f"{y}px",
                                               "height": f"{height}px",
                                               "background": color}))
 
-    meta = f"{len(bills)} bills · {d_min.strftime('%b %Y')} – {d_max.strftime('%b %Y')}"
+    n_bills = len(set(c.bill_id for c in cards))
+    meta = f"{len(cards)} stage events across {n_bills} bills · {d_min.strftime('%b %Y')} – {d_max.strftime('%b %Y')}"
     if dropped:
-        meta += f" · {dropped} hidden (too dense — zoom into a narrower date range)"
+        meta += f" · {dropped} stages hidden (narrow the date range)"
     return children, meta
 
 
-def canvas_style_for(bills: pd.DataFrame) -> dict:
-    """Width override for the timeline canvas. Must match what render_timeline computes."""
+def canvas_style_for(bills: pd.DataFrame, events: pd.DataFrame | None = None, zoom: float = 1.0) -> dict:
     if bills is None or bills.empty:
         return {"minWidth": f"{MIN_CANVAS_WIDTH}px"}
-    df = bills.copy()
-    df["_primary_date"] = pd.to_datetime(
-        df["last_action_date"].fillna(df["introduced_date"]), errors="coerce"
-    )
-    df = df.dropna(subset=["_primary_date"])
-    if df.empty:
+    cards = _collect_events(bills, events if events is not None else pd.DataFrame())
+    if not cards:
         return {"minWidth": f"{MIN_CANVAS_WIDTH}px"}
-    d_min = df["_primary_date"].min() - pd.Timedelta(days=20)
-    d_max = df["_primary_date"].max() + pd.Timedelta(days=20)
-    w = _canvas_width_for(df, d_min, d_max)
+    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=20)
+    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=20)
+    w = _canvas_width_for([c.event_date for c in cards], d_min, d_max, zoom=zoom)
     return {"minWidth": f"{w}px", "width": f"{w}px"}

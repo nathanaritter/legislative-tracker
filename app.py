@@ -21,7 +21,28 @@ app = Dash(
     assets_folder=str(BASE_DIR / "assets"),
     title="Legislative Tracker",
     suppress_callback_exceptions=True,
+    update_title=None,
 )
+
+# Prefer the SVG gavel favicon over the inherited .ico.
+app.index_string = """<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+        <link rel="alternate icon" href="/assets/favicon.ico">
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>"""
 
 server = app.server
 app.layout = build_layout()
@@ -31,6 +52,7 @@ from callbacks import filters        # noqa: E402,F401
 from callbacks import timeline       # noqa: E402,F401
 from callbacks import detail         # noqa: E402,F401
 from callbacks import state_io       # noqa: E402,F401
+from callbacks import navbar         # noqa: E402,F401
 
 
 if __name__ == "__main__":

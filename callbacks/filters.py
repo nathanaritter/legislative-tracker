@@ -2,7 +2,7 @@
 Filter cascade: state → counties → cities, plus aggregation into filters-store.
 """
 
-from dash import Input, Output, State, callback, ctx, no_update
+from dash import Input, Output, State, callback, ctx, ALL, no_update
 from datetime import date, timedelta
 
 from loaders.bills import geography_options
@@ -15,8 +15,9 @@ from loaders.bills import geography_options
     State("county-filter", "value"),
     prevent_initial_call=False,
 )
-def update_counties(states, current):
-    county_opts, _ = geography_options(states or [], [])
+def update_counties(state, current):
+    states = [state] if state else []
+    county_opts, _ = geography_options(states, [])
     valid_values = {o["value"] for o in county_opts}
     new_value = [v for v in (current or []) if v in valid_values]
     return county_opts, new_value
@@ -30,8 +31,9 @@ def update_counties(states, current):
     State("city-filter", "value"),
     prevent_initial_call=False,
 )
-def update_cities(states, counties, current):
-    _, city_opts = geography_options(states or [], counties or [])
+def update_cities(state, counties, current):
+    states = [state] if state else []
+    _, city_opts = geography_options(states, counties or [])
     valid_values = {o["value"] for o in city_opts}
     new_value = [v for v in (current or []) if v in valid_values]
     return city_opts, new_value
@@ -45,13 +47,12 @@ def update_cities(states, counties, current):
     Input("status-filter", "value"),
     Input("subject-filter", "value"),
     Input("risk-filter", "value"),
-    Input("date-filter", "start_date"),
-    Input("date-filter", "end_date"),
-    Input("cre-only-filter", "value"),
+    Input("date-filter-start", "date"),
+    Input("date-filter-end", "date"),
 )
-def collect_filters(states, counties, cities, statuses, subjects, risk, start, end, cre_only):
+def collect_filters(state, counties, cities, statuses, subjects, risk, start, end):
     return {
-        "states": states or [],
+        "states": [state] if state else [],
         "counties": counties or [],
         "cities": cities or [],
         "statuses": statuses or [],
@@ -59,7 +60,6 @@ def collect_filters(states, counties, cities, statuses, subjects, risk, start, e
         "risk": risk or [0, 100],
         "start": start,
         "end": end,
-        "cre_only": "on" in (cre_only or []),
     }
 
 
@@ -68,12 +68,11 @@ def collect_filters(states, counties, cities, statuses, subjects, risk, start, e
     Output("status-filter", "value"),
     Output("subject-filter", "value"),
     Output("risk-filter", "value"),
-    Output("date-filter", "start_date"),
-    Output("date-filter", "end_date"),
-    Output("cre-only-filter", "value"),
+    Output("date-filter-start", "date"),
+    Output("date-filter-end", "date"),
     Input("reset-filters-btn", "n_clicks"),
     prevent_initial_call=True,
 )
 def reset_filters(_n):
     today = date.today()
-    return [], [], [], [0, 100], today - timedelta(days=365 * 3), today, ["on"]
+    return None, [], [], [0, 100], today - timedelta(days=365 * 3), today

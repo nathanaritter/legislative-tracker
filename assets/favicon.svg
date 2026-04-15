@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+    <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#0a4e85"/>
+            <stop offset="100%" stop-color="#052848"/>
+        </linearGradient>
+    </defs>
+    <rect width="64" height="64" rx="10" fill="url(#bg)"/>
+    <!-- Gavel head + handle rotated so head is top-left, handle bottom-right -->
+    <g stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <!-- Handle -->
+        <line x1="25" y1="25" x2="49" y2="49" stroke-width="4"/>
+        <!-- Head (short thick stroke crossing the handle top) -->
+        <line x1="13" y1="20" x2="28" y2="12" stroke-width="9"/>
+    </g>
+    <!-- Sound block (strike plate) -->
+    <rect x="14" y="46" width="36" height="4" rx="1.5" fill="#ffffff"/>
+</svg>

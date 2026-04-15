@@ -1,6 +1,6 @@
 """
-Deck-style title bar directly above the timeline. Mirrors the PPTX regulatory timeline:
-left side has the context title + subtitle, right side has the status color legend.
+Compact deck-style title strip directly above the timeline. Kept small so the
+timeline itself fits in the viewport without vertical scrolling.
 """
 
 from dash import html
@@ -25,8 +25,8 @@ def build_title_bar():
             html.Div(
                 [
                     html.Div("Regulatory Timeline", id="deck-title", className="title"),
-                    html.Div("Filter bills on the left to scope the timeline.",
-                              id="deck-subtitle", className="subtitle"),
+                    html.Div(id="deck-subtitle", className="subtitle",
+                              children="Filter bills on the left to scope the timeline."),
                 ]
             ),
             html.Div(legend_items, className="legend"),

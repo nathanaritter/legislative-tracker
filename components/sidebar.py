@@ -1,5 +1,7 @@
 """
-Sidebar filter stack: state → counties → cities, plus status / subject / risk / date.
+Sidebar filter stack. State is single-select (only one state at a time),
+counties and cities are multi-select, 5 consolidated status buckets, risk
+slider with live value readout, and a preset bar for the date range.
 """
 
 from datetime import date, timedelta
@@ -7,11 +9,15 @@ from datetime import date, timedelta
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
-from config import STATES, BILL_STATUSES, CRE_SUBJECTS
+from config import STATES, STATUS_GROUPS, CRE_SUBJECTS
 
 
 def _opts(values):
-    return [{"label": v.replace("_", " ").title(), "value": v} for v in values]
+    return [{"label": label, "value": code} for code, label in values]
+
+
+def _subject_opts():
+    return [{"label": s.replace("_", " ").title(), "value": s} for s in CRE_SUBJECTS]
 
 
 def build_sidebar():
@@ -20,12 +26,11 @@ def build_sidebar():
 
     return html.Div(
         [
-            html.H6("States"),
+            html.H6("State"),
             dcc.Dropdown(
                 id="state-filter",
                 options=[{"label": s, "value": s} for s in STATES],
-                value=[],
-                multi=True,
+                value=None, multi=False,
                 placeholder="All states",
                 className="dash-dropdown filter-row",
             ),
@@ -49,7 +54,7 @@ def build_sidebar():
             html.H6("Status"),
             dcc.Dropdown(
                 id="status-filter",
-                options=_opts(BILL_STATUSES),
+                options=_opts(STATUS_GROUPS),
                 value=[], multi=True,
                 placeholder="Any status",
                 className="dash-dropdown filter-row",
@@ -58,9 +63,9 @@ def build_sidebar():
             html.H6("Subject"),
             dcc.Dropdown(
                 id="subject-filter",
-                options=_opts(CRE_SUBJECTS),
+                options=_subject_opts(),
                 value=[], multi=True,
-                placeholder="Any CRE subject",
+                placeholder="Any subject",
                 className="dash-dropdown filter-row",
             ),
 
@@ -69,36 +74,37 @@ def build_sidebar():
                 id="risk-filter",
                 min=0, max=100, step=5,
                 value=[0, 100],
-                marks={0: "0", 50: "50", 100: "100"},
-                tooltip={"placement": "bottom", "always_visible": False},
-                className="filter-row",
+                marks={0: "0", 100: "100"},
+                tooltip={"placement": "bottom", "always_visible": True},
+                className="filter-row brand-slider",
             ),
 
             html.H6("Date range"),
-            dcc.DatePickerRange(
-                id="date-filter",
-                start_date=default_start,
-                end_date=today,
-                display_format="YYYY-MM-DD",
-                className="filter-row",
-                style={"width": "100%"},
+            html.Div(
+                [
+                    dcc.DatePickerSingle(
+                        id="date-filter-start",
+                        date=default_start,
+                        display_format="MMM D, YYYY",
+                        placeholder="Start",
+                        className="brand-datepicker",
+                    ),
+                    dcc.DatePickerSingle(
+                        id="date-filter-end",
+                        date=today,
+                        display_format="MMM D, YYYY",
+                        placeholder="End",
+                        className="brand-datepicker",
+                    ),
+                ],
+                className="date-range-row",
             ),
 
-            dbc.Checklist(
-                id="cre-only-filter",
-                options=[{"label": " CRE-relevant only", "value": "on"}],
-                value=["on"],
-                className="filter-row",
-                style={"marginTop": "12px", "fontSize": "12px"},
-            ),
-
-            html.Hr(style={"margin": "12px 0"}),
+            html.Hr(style={"margin": "14px 0 10px"}),
             dbc.Button(
                 [html.I(className="bi bi-arrow-repeat", style={"marginRight": "6px"}), "Reset filters"],
                 id="reset-filters-btn",
-                color="secondary",
-                outline=True,
-                size="sm",
+                color="secondary", outline=True, size="sm",
                 style={"width": "100%"},
             ),
         ],
