@@ -126,9 +126,11 @@ def _canvas_width_for(event_dates, d_min, d_max, min_gap=CARD_W + 10, rows=len(R
     total_days = max(1, (d_max - d_min).days)
     base_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET))
     density_min = _density_min_width(event_dates, d_min, d_max, min_gap=min_gap, rows=rows)
-    # Density floor always applies so zoom-out can't drop cards; zoom-in expands
-    # beyond the floor freely up to the hard ceiling.
-    final = max(int(base_w * zoom), density_min)
+    # "Fit" width = whichever of (time span, density requirement) is larger.
+    # Zoom multiplies the fit; density floor still applies so zoom-out never
+    # collapses cards into each other.
+    fit = max(base_w, density_min)
+    final = max(int(fit * zoom), density_min)
     return int(min(final, MAX_CANVAS_WIDTH * 4))
 
 
