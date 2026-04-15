@@ -1,11 +1,11 @@
 """
-Click on timeline segment or bill grid row → open detail modal.
+Click on a timeline card or bill grid row → open the detail modal.
 """
 
 import json
 import logging
 
-from dash import Input, Output, State, callback, ctx, no_update, html
+from dash import Input, Output, State, callback, ctx, no_update, html, ALL
 import dash_bootstrap_components as dbc
 
 from components.detail_modal import build_risk_gauge, build_breakdown_chart
@@ -14,17 +14,6 @@ from services.storage import signed_bill_text_url
 from config import ACCENT_COLOR
 
 logger = logging.getLogger(__name__)
-
-
-def _bill_from_timeline_click(clickData):
-    try:
-        pt = clickData["points"][0]
-        cd = pt.get("customdata")
-        if cd and len(cd) >= 1:
-            return cd[0]
-    except Exception:
-        pass
-    return None
 
 
 @callback(
@@ -39,33 +28,37 @@ def _bill_from_timeline_click(clickData):
     Output("detail-download-btn", "href"),
     Output("detail-download-btn", "disabled"),
     Output("selected-bill-store", "data"),
-    Input("timeline-figure", "clickData"),
+    Input({"type": "bill-card", "bill_id": ALL}, "n_clicks"),
     Input("bill-grid", "selectedRows"),
     Input("detail-close-btn", "n_clicks"),
     State("detail-modal", "is_open"),
     prevent_initial_call=True,
 )
-def open_detail(click_data, selected_rows, close_n, is_open):
+def open_detail(card_clicks, selected_rows, close_n, is_open):
     trigger = ctx.triggered_id
 
     if trigger == "detail-close-btn":
-        return False, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, None
+        return (False,) + (no_update,) * 9 + (None,)
 
     bill_id = None
-    if trigger == "timeline-figure" and click_data:
-        bill_id = _bill_from_timeline_click(click_data)
+    if isinstance(trigger, dict) and trigger.get("type") == "bill-card":
+        # Only fire when the clicked card actually has n_clicks > 0
+        clicked = ctx.triggered[0] if ctx.triggered else None
+        if clicked and clicked.get("value"):
+            bill_id = trigger["bill_id"]
     elif trigger == "bill-grid" and selected_rows:
         bill_id = selected_rows[0].get("bill_id")
 
     if not bill_id:
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return (no_update,) * 11
 
     bill = get_bill(bill_id)
     if not bill:
         logger.warning("Bill not found: %s", bill_id)
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return (no_update,) * 11
 
     title = f"{bill.get('state','')} {bill.get('bill_number','')} — {bill.get('title','')}"
+
     meta_parts = []
     if bill.get("jurisdiction_name"):
         meta_parts.append(bill["jurisdiction_name"])
@@ -90,9 +83,11 @@ def open_detail(click_data, selected_rows, close_n, is_open):
         subjects = json.loads(bill.get("subjects_json")) if isinstance(bill.get("subjects_json"), str) else (bill.get("subjects_json") or [])
     except Exception:
         subjects = []
-    subject_pills = [dbc.Badge(s.replace("_", " ").title(), color="primary", pill=True,
-                                style={"marginRight": "4px", "backgroundColor": ACCENT_COLOR})
-                     for s in subjects]
+    subject_pills = [
+        dbc.Badge(s.replace("_", " ").title(), color="primary", pill=True,
+                  style={"marginRight": "4px", "backgroundColor": ACCENT_COLOR})
+        for s in subjects
+    ]
 
     text_path = bill.get("text_blob_path")
     download_url = signed_bill_text_url(text_path) if text_path else None

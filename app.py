@@ -34,5 +34,7 @@ from callbacks import state_io       # noqa: E402,F401
 
 
 if __name__ == "__main__":
-    logger.info("Starting Legislative Tracker at http://localhost:8050")
-    app.run(debug=False, host="0.0.0.0", port=8050)
+    import os
+    port = int(os.environ.get("PORT", 8060))
+    logger.info("Starting Legislative Tracker at http://localhost:%s", port)
+    app.run(debug=False, host="0.0.0.0", port=port)

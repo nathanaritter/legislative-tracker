@@ -76,4 +76,4 @@ def collect_filters(states, counties, cities, statuses, subjects, risk, start, e
 )
 def reset_filters(_n):
     today = date.today()
-    return [], [], [], [0, 100], today - timedelta(days=365), today, ["on"]
+    return [], [], [], [0, 100], today - timedelta(days=365 * 3), today, ["on"]

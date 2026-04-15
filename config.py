@@ -99,7 +99,7 @@ NAV_HEIGHT = "56px"
 # ============================
 # DOMAIN CONSTANTS
 # ============================
-TARGET_STATES = ["CO", "TX", "FL", "UT", "VA", "MD", "NV", "TN", "GA", "AZ", "ID"]
+STATES = ["CO", "TX", "FL", "UT", "VA", "MD", "NV", "TN", "GA", "AZ", "ID"]
 
 BILL_STATUSES = [
     "introduced",
@@ -113,19 +113,34 @@ BILL_STATUSES = [
     "amended",
 ]
 
-# Color per event type for timeline segments
-EVENT_COLORS = {
-    "introduced": "#589BD5",
-    "in_committee": "#B49955",
-    "committee": "#B49955",
-    "passed_chamber": "#189AB4",
-    "passed": "#055C9D",
-    "signed": "#059669",
-    "enacted": "#047857",
-    "vetoed": "#dc2626",
-    "failed": "#6b7280",
-    "amended": "#d97706",
-}
+# Status buckets + colors mirror the Milestone PPTX regulatory timeline deck
+# (etl-base-adjacent design; see "update timeline/card_templates.md").
+STATUS_BUCKETS = [
+    ("enacted",         "In Effect",              "#2E7D32"),
+    ("signed",          "Signed / Passed Leg.",   "#1B5E83"),
+    ("passed",          "Signed / Passed Leg.",   "#1B5E83"),
+    ("passed_chamber",  "Signed / Passed Leg.",   "#1B5E83"),
+    ("in_committee",    "Introduced / Committee", "#6A4C93"),
+    ("committee",       "Introduced / Committee", "#6A4C93"),
+    ("introduced",      "Introduced / Committee", "#6A4C93"),
+    ("amended",         "Introduced / Committee", "#6A4C93"),
+    ("vetoed",          "Vetoed / Killed",        "#999999"),
+    ("failed",          "Vetoed / Killed",        "#999999"),
+]
+STATUS_COLOR = {code: color for code, _label, color in STATUS_BUCKETS}
+STATUS_LABEL = {code: label for code, label, _c in STATUS_BUCKETS}
+
+# Legend shown in the title bar — one row per distinct color.
+LEGEND = [
+    ("In Effect",              "#2E7D32"),
+    ("Signed / Passed Leg.",   "#1B5E83"),
+    ("Introduced / Committee", "#6A4C93"),
+    ("Vetoed / Killed",        "#999999"),
+    ("Election / Vote",        "#8B6914"),
+]
+
+# Backwards-compatible alias used by a couple of older render paths.
+EVENT_COLORS = STATUS_COLOR
 
 # CRE subject tags (source of truth: etl-base/etl/legislation/cre_keywords.yml)
 CRE_SUBJECTS = [
