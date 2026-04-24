@@ -179,10 +179,13 @@ def open_detail(card_clicks, legend_label_clicks, close_n, is_open):
             })
     history_section = build_history_section(hist_rows)
 
-    text_path = _str_or_none(bill.get("text_blob_path"))
-    download_url = None
-    if text_path and text_path.startswith("legislation/"):
-        download_url = signed_bill_text_url(text_path)
+    # Prefer the LegiScan state_link URL (direct PDF on the legislature's
+    # website); fall back to the legacy blob path if it's ever populated.
+    download_url = _str_or_none(bill.get("text_url"))
+    if not download_url:
+        text_path = _str_or_none(bill.get("text_blob_path"))
+        if text_path and text_path.startswith("legislation/"):
+            download_url = signed_bill_text_url(text_path)
     download_disabled = download_url is None
 
     state_url = _str_or_none(bill.get("url")) or ""
