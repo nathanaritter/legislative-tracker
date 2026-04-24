@@ -1,0 +1,49 @@
+name: Trigger auto deployment for ca-legislative-tracker
+
+# When this action will be executed
+on:
+  # Automatically trigger it when detected changes in repo
+  push:
+    branches: 
+      [ main ]
+    paths:
+    - '**'
+    - '.github/workflows/ca-legislative-tracker-AutoDeployTrigger-4e6e1997-c551-452f-8ac8-c49796876a5a.yml'
+
+  # Allow manual trigger 
+  workflow_dispatch:      
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions: 
+      id-token: write #This is required for requesting the OIDC JWT Token
+      contents: read #Required when GH token is used to authenticate with private repo
+
+    steps:
+      - name: Checkout to the branch
+        uses: actions/checkout@v2
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.CALEGISLATIVETRACKER_AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.CALEGISLATIVETRACKER_AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CALEGISLATIVETRACKER_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push container image to registry
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          appSourcePath: ${{ github.workspace }}
+          _dockerfilePathKey_: _dockerfilePath_
+          _targetLabelKey_: _targetLabel_
+          registryUrl: acrdataplatdevdcbe93ee.azurecr.io
+          registryUsername: ${{ secrets.CALEGISLATIVETRACKER_REGISTRY_USERNAME }}
+          registryPassword: ${{ secrets.CALEGISLATIVETRACKER_REGISTRY_PASSWORD }}
+          containerAppName: ca-legislative-tracker
+          resourceGroup: rg-data-platform
+          imageToBuild: acrdataplatdevdcbe93ee.azurecr.io/ca-legislative-tracker:${{ github.sha }}
+          _buildArgumentsKey_: |
+            _buildArgumentsValues_
+
+
