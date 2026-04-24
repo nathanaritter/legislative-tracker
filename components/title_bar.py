@@ -32,15 +32,6 @@ def build_title_bar():
         ))
 
     return html.Div(
-        [
-            html.Div(
-                [
-                    html.Div("Regulatory Timeline", id="deck-title", className="title"),
-                    html.Div(id="deck-subtitle", className="subtitle",
-                              children="Filter bills on the left to scope the timeline."),
-                ]
-            ),
-            html.Div(legend_items, className="legend"),
-        ],
+        html.Div(legend_items, className="legend"),
         className="deck-title-bar",
     )

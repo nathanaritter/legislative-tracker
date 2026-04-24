@@ -5,13 +5,28 @@ Click on a timeline card or bill grid row → open the detail modal.
 import json
 import logging
 
+import pandas as pd
 from dash import Input, Output, State, callback, ctx, no_update, html, ALL
 import dash_bootstrap_components as dbc
 
-from components.detail_modal import build_risk_summary, build_breakdown, build_votes_section
-from loaders.bills import get_bill
+
+def _str_or_none(v):
+    """Return v as a clean string, or None if NaN / empty. Pandas returns
+    `nan` (float) for missing string cells, which is truthy and breaks `or ""`
+    fallbacks."""
+    if v is None:
+        return None
+    if isinstance(v, float) and pd.isna(v):
+        return None
+    s = str(v).strip()
+    return s or None
+
+from components.detail_modal import (build_risk_summary, build_breakdown,
+                                      build_summary_sections,
+                                      build_votes_section, build_history_section)
+from loaders.bills import get_bill, load_events
 from services.storage import signed_bill_text_url
-from config import ACCENT_COLOR, STATUS_LABEL
+from config import ACCENT_COLOR, STATUS_LABEL, CATEGORY_LABEL
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +39,11 @@ logger = logging.getLogger(__name__)
     Output("detail-risk-breakdown", "children"),
     Output("detail-summary", "children"),
     Output("detail-sponsors-grid", "rowData"),
+    Output("detail-history", "children"),
     Output("detail-votes", "children"),
     Output("detail-subjects", "children"),
+    Output("detail-statelink-btn", "href"),
+    Output("detail-statelink-btn", "disabled"),
     Output("detail-download-btn", "href"),
     Output("detail-download-btn", "disabled"),
     Output("selected-bill-store", "data"),
@@ -37,9 +55,10 @@ logger = logging.getLogger(__name__)
 )
 def open_detail(card_clicks, legend_label_clicks, close_n, is_open):
     trigger = ctx.triggered_id
+    N_OUT = 15  # total outputs including selected-bill-store
 
     if trigger == "detail-close-btn":
-        return (False,) + (no_update,) * 10 + (None,)
+        return (False,) + (no_update,) * (N_OUT - 2) + (None,)
 
     bill_id = None
     if isinstance(trigger, dict) and trigger.get("type") in ("bill-card", "bill-legend-label"):
@@ -48,12 +67,12 @@ def open_detail(card_clicks, legend_label_clicks, close_n, is_open):
             bill_id = trigger["bill_id"]
 
     if not bill_id:
-        return (no_update,) * 12
+        return (no_update,) * N_OUT
 
     bill = get_bill(bill_id)
     if not bill:
         logger.warning("Bill not found: %s", bill_id)
-        return (no_update,) * 12
+        return (no_update,) * N_OUT
 
     title = f"{bill.get('bill_number','')} — {bill.get('title','')}"
 
@@ -68,21 +87,44 @@ def open_detail(card_clicks, legend_label_clicks, close_n, is_open):
     meta = " · ".join(meta_parts)
 
     score = bill.get("ai_risk_score")
-    summary_block = build_risk_summary(score, bill.get("impact_direction"))
+    direction_rationale = _str_or_none(bill.get("ai_direction_rationale")) or ""
+    summary_block = build_risk_summary(
+        score,
+        _str_or_none(bill.get("impact_direction")) or "",
+        rationale=direction_rationale,
+    )
     breakdown_block = build_breakdown(
-        bill.get("ai_risk_breakdown_json"),
-        bill.get("ai_risk_rationale_json"),
+        _str_or_none(bill.get("ai_risk_breakdown_json")),
+        _str_or_none(bill.get("ai_risk_rationale_json")),
     )
 
-    summary_text = bill.get("ai_summary") or "_AI summary pending — this bill has not yet been enriched._"
+    summary_block_sections = build_summary_sections(_str_or_none(bill.get("ai_summary")))
 
     try:
-        sponsors = json.loads(bill.get("sponsors_json")) if isinstance(bill.get("sponsors_json"), str) else (bill.get("sponsors_json") or [])
+        sponsors_raw = _str_or_none(bill.get("sponsors_json"))
+        sponsors_all = json.loads(sponsors_raw) if sponsors_raw else []
     except Exception:
-        sponsors = []
+        sponsors_all = []
+    # Prime sponsors only. LegiScan marks primes with sponsor_order 1 (or 0
+    # occasionally). Cosponsors flood the grid and don't help the user — they
+    # want to know who's actually driving the bill. Fall back to the first 2
+    # if no order field is present.
+    def _is_prime(s):
+        o = s.get("sponsor_order")
+        return str(o) in ("0", "1") or o in (0, 1)
+    primes = [s for s in sponsors_all if _is_prime(s)]
+    if not primes:
+        primes = sponsors_all[:2]
+    sponsors = [
+        {"name":  s.get("name") or "",
+          "party": s.get("party") or "",
+          "role":  s.get("role") or "Prime"}
+        for s in primes
+    ]
 
     try:
-        votes_raw = json.loads(bill.get("votes_json")) if isinstance(bill.get("votes_json"), str) else (bill.get("votes_json") or [])
+        votes_raw_s = _str_or_none(bill.get("votes_json"))
+        votes_raw = json.loads(votes_raw_s) if votes_raw_s else []
     except Exception:
         votes_raw = []
     votes = []
@@ -91,9 +133,13 @@ def open_detail(card_clicks, legend_label_clicks, close_n, is_open):
         nay = int(v.get("nay", 0) or 0)
         nv = int(v.get("nv", 0) or 0)
         absent = int(v.get("absent", 0) or 0)
+        desc = v.get("desc") or ""
+        # Strip HTML entities LegiScan sometimes leaves in vote descriptions.
+        desc = desc.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
         votes.append({
             "chamber": v.get("chamber") or "",
             "date": v.get("date") or "",
+            "desc": desc,
             "yea": yea,
             "nay": nay,
             "other": f"{nv} / {absent}" if (nv or absent) else "—",
@@ -101,19 +147,50 @@ def open_detail(card_clicks, legend_label_clicks, close_n, is_open):
         })
     votes_section = build_votes_section(votes)
 
+    # Modal shows AI-assigned categories (not LegiScan raw subjects). These
+    # are the same tags that populate the Category filter in the sidebar.
     try:
-        subjects = json.loads(bill.get("subjects_json")) if isinstance(bill.get("subjects_json"), str) else (bill.get("subjects_json") or [])
+        cat_raw = _str_or_none(bill.get("ai_categories"))
+        categories = json.loads(cat_raw) if cat_raw else []
+        if not isinstance(categories, list):
+            categories = [categories]
     except Exception:
-        subjects = []
+        categories = []
     subject_pills = [
-        dbc.Badge(s.replace("_", " ").title(), color="primary", pill=True,
-                  style={"marginRight": "4px", "backgroundColor": ACCENT_COLOR})
-        for s in subjects
+        dbc.Badge(
+            CATEGORY_LABEL.get(str(c), str(c).replace("_", " ").title()),
+            color="primary", pill=True,
+            style={"marginRight": "4px", "backgroundColor": ACCENT_COLOR},
+        )
+        for c in categories if c
     ]
 
-    text_path = bill.get("text_blob_path")
-    download_url = signed_bill_text_url(text_path) if text_path else None
-    disabled = download_url is None
+    # Bill history (chronological actions from bill_events.csv)
+    events_df = load_events()
+    hist_rows = []
+    if events_df is not None and not events_df.empty:
+        m = events_df[events_df["bill_id"] == bill_id].sort_values("date")
+        for _, ev in m.iterrows():
+            hist_rows.append({
+                "date": ev.get("date"),
+                "event_type": ev.get("event_type"),
+                "chamber": ev.get("chamber"),
+                "action_text": ev.get("action_text") if "action_text" in ev.index else None,
+            })
+    history_section = build_history_section(hist_rows)
 
-    return (True, title, meta, summary_block, breakdown_block, summary_text, sponsors,
-            votes_section, html.Div(subject_pills), download_url or "#", disabled, bill_id)
+    text_path = _str_or_none(bill.get("text_blob_path"))
+    download_url = None
+    if text_path and text_path.startswith("legislation/"):
+        download_url = signed_bill_text_url(text_path)
+    download_disabled = download_url is None
+
+    state_url = _str_or_none(bill.get("url")) or ""
+    state_disabled = not state_url
+
+    return (True, title, meta, summary_block, breakdown_block,
+            summary_block_sections, sponsors,
+            history_section, votes_section, html.Div(subject_pills),
+            state_url or "#", state_disabled,
+            download_url or "#", download_disabled,
+            bill_id)

@@ -94,6 +94,12 @@ html, body {
     padding: 14px 14px 32px 14px;
     overflow-y: auto;
     flex-shrink: 0;
+    /* Stick to the viewport and scroll internally so the long filter stack
+       doesn't push the rest of the page down. */
+    max-height: calc(100vh - var(--nav-height));
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
 }
 .app-sidebar h6, .app-sidebar .h6-inline {
     color: var(--gray-700);
@@ -105,6 +111,13 @@ html, body {
     margin-bottom: 4px;
 }
 .app-sidebar h6:first-child { margin-top: 0; }
+.slider-sublabel {
+    font-size: 10px;
+    color: var(--gray-700);
+    margin-top: 8px;
+    margin-bottom: 2px;
+    font-weight: 500;
+}
 .app-sidebar .h6-row {
     display: flex;
     align-items: baseline;
@@ -213,25 +226,16 @@ html, body {
     position: relative;
     width: 100%;
     max-height: 760px;
-    overflow: auto;                /* horizontal + vertical scroll */
+    overflow: auto;                /* scrollbars pan the canvas */
     user-select: none;
-    cursor: default;
+    cursor: grab;
 }
 .timeline-wrap.drag-active { cursor: grabbing; }
-.timeline-wrap .zoom-select-rect {
-    position: absolute;
-    top: 0; bottom: 0;
-    background: rgba(7, 64, 112, 0.12);
-    border-left: 1px solid var(--brand);
-    border-right: 1px solid var(--brand);
-    pointer-events: none;
-    z-index: 10;
-}
 .timeline-canvas {
     position: relative;
-    /* Width is set inline by canvas_style_for (server) and overridden by
-       timeline_zoom.js when the user zooms. NO min-width — otherwise zoom-out
-       with a small bill set can't shrink the canvas below 1400px. */
+    /* Width set inline by canvas_style_for(). Zoom is CSS `zoom` property
+       applied by assets/timeline_zoom.js — browser reflows at the new scale
+       so text stays crisp. Pan is scrollLeft/scrollTop on .timeline-wrap. */
     height: 1420px;
 }
 .timeline-hint {
@@ -257,9 +261,14 @@ html, body {
     position: absolute;
     top: 394px;
     transform: translateX(-50%);
-    font-size: 10px;
-    color: var(--gray-700);
+    font-size: 12px;
+    color: var(--gray-900);
+    font-weight: 600;
     white-space: nowrap;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 1px 4px;
+    border-radius: 2px;
+    z-index: 2;
 }
 .timeline-dot {
     position: absolute;
@@ -278,7 +287,7 @@ html, body {
 .bill-card {
     position: absolute;
     width: 188px;
-    height: 96px;
+    height: 118px;
     background: #fff;
     border-radius: 6px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -321,26 +330,53 @@ html, body {
     flex: 1;
     text-align: right;
 }
-.bill-card .header .stage-score {
+.bill-card .card-footer {
+    /* Full-width footer strip: impact score left, jurisdiction right. */
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    height: 22px;
+    font-size: 10px;
+    color: var(--gray-700);
+    background: #f3f4f6;
+    border-top: 1px solid var(--gray-200);
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    z-index: 2;
+}
+.bill-card .card-footer .stage-score {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    font-size: 10px;
+    gap: 4px;
+    font-size: 11px;
     font-weight: 700;
-    padding: 1px 7px;
-    border-radius: 9px;
-    color: #fff;
+    color: var(--gray-900);
     letter-spacing: 0.02em;
-    min-width: 20px;
-    text-align: center;
-    background: rgba(255,255,255,0.22);
-    border: 1px solid rgba(255,255,255,0.55);
 }
-.stage-score .dir { font-size: 9px; line-height: 1; }
-.stage-score .dir-favorable { color: #b9f6b2; }
-.stage-score .dir-adverse { color: #ffb3b3; }
-.stage-score .dir-mixed { color: #ffe08a; }
-.stage-score .dir-neutral, .stage-score .dir-unk { color: rgba(255,255,255,0.8); }
+.bill-card .card-footer .card-juris {
+    font-size: 10px;
+    color: var(--gray-500);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90px;
+}
+.bill-card .stage-score-placeholder { width: 1px; }
+.stage-score .dir {
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 900;
+    text-shadow: 0 0 2px rgba(0,0,0,0.5), 0 0 1px rgba(0,0,0,0.5);
+}
+.stage-score .dir-favorable { color: #16a34a; }
+.stage-score .dir-adverse { color: #ef4444; }
+.stage-score .dir-mixed { color: #f59e0b; }
+.stage-score .dir-neutral, .stage-score .dir-unk { color: rgba(255,255,255,0.9); text-shadow: none; }
 
 /* Zoom controls */
 .zoom-controls {
@@ -387,6 +423,14 @@ html, body {
     flex-direction: column;
     gap: 1px;
     line-height: 1.2;
+    /* Leave room for the 22-px footer at the bottom of the card so the title
+       can't run into the impact score / jurisdiction strip. */
+    position: absolute;
+    top: 24px;   /* below the header */
+    left: 0;
+    right: 0;
+    bottom: 22px;
+    overflow: hidden;
 }
 .bill-card .body .bill-num {
     font-size: 11px;
@@ -400,7 +444,7 @@ html, body {
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     line-height: 1.25;
 }
@@ -412,17 +456,8 @@ html, body {
     color: var(--gray-900);
     min-height: 26px;
 }
-.bill-card .juris {
-    position: absolute;
-    left: 10px;
-    right: 10px;
-    bottom: 6px;
-    font-size: 10px;
-    color: var(--gray-500);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+/* `.juris` (absolute positioned) is deprecated — jurisdiction is now rendered
+   inside `.card-footer > .card-juris`. Old element won't exist in new DOM. */
 .bill-card .progress-strip {
     position: absolute;
     left: 14px;
@@ -508,6 +543,60 @@ html, body {
     font-weight: 700;
 }
 
+/* Session bands — translucent tinted rectangle per legislative session with
+   dashed start/end lines so the boundary is obvious at any zoom level. Label
+   sits on a brand-colored bar at the top of the band so it reads clearly
+   even when the user zooms out. */
+.session-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(7, 64, 112, 0.05);
+    border-left: 2px dashed rgba(7, 64, 112, 0.55);
+    border-right: 2px dashed rgba(7, 64, 112, 0.55);
+    pointer-events: none;
+    z-index: 0;
+}
+.session-band-label {
+    position: absolute;
+    top: 0;
+    height: 22px;
+    line-height: 22px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.03em;
+    pointer-events: none;
+    z-index: 1;
+    white-space: nowrap;
+    background: var(--brand);
+    padding: 0 10px;
+    border-radius: 0 0 4px 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+.session-date-label {
+    position: absolute;
+    top: 24px;
+    height: 18px;
+    line-height: 18px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brand);
+    pointer-events: none;
+    z-index: 1;
+    white-space: nowrap;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 0 4px;
+    border-radius: 2px;
+}
+.session-date-start {
+    transform: translateX(0);
+}
+.session-date-end {
+    transform: translateX(-100%);
+}
+
 /* ========== Right-side bill legend ========== */
 .bill-legend {
     width: 240px;
@@ -516,6 +605,10 @@ html, body {
     border-left: 1px solid var(--gray-200);
     overflow-y: auto;
     padding: 10px 12px;
+    max-height: calc(100vh - var(--nav-height));
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
 }
 .bill-legend h5 {
     font-size: 10px;
@@ -568,6 +661,64 @@ html, body {
 }
 .bill-legend-item.hidden .label { color: var(--gray-300); text-decoration: line-through; }
 .bill-legend-item.hidden .swatch { opacity: 0.25; }
+.bill-legend-item.partial-hidden .label { color: var(--gray-500); }
+.bill-legend-item.partial-hidden .swatch { opacity: 0.55; }
+.bill-legend-item .legend-risk {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--gray-700);
+    background: var(--gray-100);
+    border-radius: 8px;
+    padding: 1px 6px;
+    margin-left: 4px;
+}
+.bill-legend-item .legend-hide-icon {
+    font-size: 12px;
+    margin-left: 4px;
+    flex-shrink: 0;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    color: var(--gray-400, #9ca3af);
+}
+.bill-legend-item .legend-hide-icon:hover { background: var(--gray-100); color: var(--brand); }
+.bill-legend-item .legend-hide-icon.hidden-full { color: var(--gray-500); }
+.bill-legend-item .legend-hide-icon.hidden-partial { color: var(--gray-400, #9ca3af); }
+.bill-legend-item .legend-hide-icon.isolated { color: var(--brand); }
+.bill-legend-item.isolated-other .label { color: var(--gray-300); }
+.bill-legend-item.isolated-other .swatch { opacity: 0.25; }
+
+/* Card right-click context menu */
+.card-context-menu {
+    position: fixed;
+    z-index: 10000;
+    background: #ffffff;
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 4px 0;
+    min-width: 180px;
+    font-size: 12px;
+    display: none;
+}
+.card-context-menu.open { display: block; }
+.card-context-menu .cm-item {
+    padding: 7px 12px;
+    cursor: pointer;
+    color: var(--gray-900);
+    white-space: nowrap;
+    user-select: none;
+}
+.card-context-menu .cm-item:hover { background: var(--gray-100); color: var(--brand); }
+.card-context-menu .cm-sep { height: 1px; background: var(--gray-200); margin: 4px 0; }
+.card-context-menu .cm-heading {
+    padding: 4px 12px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
 
 /* ========== Dropdown / slider / date picker polish ========== */
 .Select-control,
@@ -578,6 +729,37 @@ html, body {
     min-height: 30px !important;
 }
 .Select-placeholder, .Select-value-label { font-size: 12px !important; }
+/* Session-filter dropdown labels lead with a relevant-bill count + date range
+   that wraps to 2-3 lines. Slot height comes from `optionHeight=80` on the
+   dropdown component itself; CSS only handles padding, line-height and the
+   visible divider between rows. min-height is omitted on purpose — it would
+   fight the virtualized fixed-height slot and cause overlap. */
+#session-filter .VirtualizedSelectOption,
+#session-filter .Select-option,
+#session-filter .Select-menu-outer .Select-option {
+    padding: 8px 12px !important;
+    line-height: 1.4 !important;
+    border-bottom: 1px solid var(--gray-200) !important;
+    white-space: normal !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+}
+#session-filter .VirtualizedSelectOption:last-child,
+#session-filter .Select-option:last-child {
+    border-bottom: none !important;
+}
+.Select--multi .Select-value {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+}
+.Select--multi .Select-value-icon {
+    flex-shrink: 0 !important;
+}
+.Select--multi .Select-value-label {
+    word-wrap: break-word !important;
+    white-space: normal !important;
+}
 .filter-row { margin-bottom: 4px; }
 /* Uniform vertical rhythm between filter groups: h6 -> control -> next h6.
    h6 has margin-top: 12px (shared). Each control's margin-bottom is 4px so
@@ -760,12 +942,20 @@ html, body {
 }
 .direction-glyph { font-size: 16px; line-height: 1; }
 .direction-label { font-size: 10px; font-weight: 600; color: var(--gray-700); letter-spacing: 0.02em; text-transform: uppercase; white-space: nowrap; }
-.direction-glyph.dir-favorable { color: #059669; }
-.direction-glyph.dir-adverse { color: #dc2626; }
+.direction-glyph.dir-favorable { color: #16a34a; }
+.direction-glyph.dir-adverse { color: #ef4444; }
 .direction-glyph.dir-mixed { color: #d97706; }
 .direction-glyph.dir-neutral { color: var(--gray-500); }
-.risk-breakdown { display: flex; flex-direction: column; gap: 10px; }
-.risk-row { display: grid; grid-template-columns: 150px 1fr 54px; gap: 10px; align-items: center; }
+.risk-breakdown { display: flex; flex-direction: column; gap: 18px; }
+.risk-row {
+    display: grid;
+    grid-template-columns: 150px 1fr 54px;
+    gap: 10px;
+    align-items: center;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--gray-200);
+}
+.risk-row:last-child { border-bottom: none; padding-bottom: 0; }
 .risk-row .name {
     font-size: 11px;
     font-weight: 600;
@@ -782,8 +972,13 @@ html, body {
 }
 .risk-row .bar-fill {
     height: 100%;
-    background: var(--brand);
+    /* Light-blue → dark-blue gradient so the visual intensity matches the
+       magnitude: wider bars push further into the deeper brand-blue. */
+    background: linear-gradient(90deg, var(--brand-light) 0%, var(--brand) 100%);
     border-radius: 4px;
+    /* Solid right edge so the fill terminus is distinct against the track,
+       not lost in the gradient. */
+    box-shadow: 2px 0 0 var(--brand);
 }
 .risk-row .score { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--gray-900); font-size: 11px; }
 .risk-rationale {
@@ -797,11 +992,64 @@ html, body {
     margin-top: 4px;
 }
 
+.risk-summary-center {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.risk-summary-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gray-500);
+    font-weight: 600;
+}
+.risk-summary-rationale {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--gray-900);
+}
+
 .modal-section-heading {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--gray-500);
     font-weight: 600;
-    margin: 14px 0 6px 0;
+    margin: 18px 0 8px 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--gray-200);
+}
+/* First section heading sits flush against the scorecard — no extra divider. */
+.modal-body > .modal-section-heading:first-of-type {
+    margin-top: 14px;
+    padding-top: 0;
+    border-top: none;
+}
+
+.summary-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.summary-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.summary-heading {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--brand);
+    font-weight: 700;
+    margin: 0;
+}
+.summary-body {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--gray-900);
 }

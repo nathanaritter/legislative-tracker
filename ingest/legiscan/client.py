@@ -15,10 +15,14 @@ previous bulk runs caused millions of files on OneDrive.
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
+import pathlib
+import re
 import time
-from datetime import datetime
+import zipfile
+from datetime import datetime, timedelta
 from typing import Iterable, Iterator
 
 import pandas as pd
@@ -50,17 +54,24 @@ HISTORY_ACTION_MAP = {
     "Vetoed": "vetoed",
     "Failed": "failed",
     "Died": "failed",
+    "Postpone Indefinitely": "failed",
+    "Postponed Indefinitely": "failed",
+    "Withdrawn": "failed",
     "Amended": "amended",
     "Substituted": "amended",
 }
 
 STATUS_CODE_MAP = {
+    # LegiScan numeric status codes (per their API docs):
+    # 1 Introduced, 2 Engrossed (passed first chamber), 3 Enrolled (passed both
+    # chambers, awaiting governor), 4 Passed (signed into law), 5 Vetoed,
+    # 6 Failed/Died/Postponed Indefinitely.
     1: "introduced",
-    2: "in_committee",
-    3: "passed_chamber",
-    4: "passed",
+    2: "passed_chamber",
+    3: "passed",
+    4: "enacted",
     5: "vetoed",
-    6: "enacted",
+    6: "failed",
 }
 
 
@@ -97,10 +108,40 @@ class LegiScanClient:
         return {k: v for k, v in data.items() if isinstance(v, dict) and "bill_id" in v}
 
     def get_bill(self, bill_id: int) -> dict:
+        # GUARD: per-bill API calls burn credits at O(bills). The previous run
+        # of this code burned an entire credit allotment in under 5 minutes.
+        # Bulk dataset API (get_dataset_list + get_dataset) is the supported path.
+        # If you really need per-bill, set LEGISCAN_ALLOW_PERBILL=1 explicitly.
+        import os
+        if not os.environ.get("LEGISCAN_ALLOW_PERBILL"):
+            raise LegiScanError(
+                "Per-bill getBill API call blocked to prevent credit burn. "
+                "Use fetch_state_bills() (bulk dataset API) instead. "
+                "To override, set LEGISCAN_ALLOW_PERBILL=1 in the environment."
+            )
         return self._call("getBill", id=bill_id).get("bill", {})
 
     def get_bill_text(self, doc_id: int) -> dict:
+        import os
+        if not os.environ.get("LEGISCAN_ALLOW_PERBILL"):
+            raise LegiScanError(
+                "Per-bill getBillText API call blocked to prevent credit burn. "
+                "Bulk ZIPs already include text references; download via state_link instead. "
+                "To override, set LEGISCAN_ALLOW_PERBILL=1 in the environment."
+            )
         return self._call("getBillText", id=doc_id).get("text", {})
+
+    def get_dataset_list(self, state: str) -> list[dict]:
+        return self._call("getDatasetList", state=state).get("datasetlist", [])
+
+    def get_dataset(self, session_id: int, access_key: str) -> bytes:
+        """Download the bulk ZIP for a session. Returns raw ZIP bytes."""
+        data = self._call("getDataset", id=session_id, access_key=access_key)
+        ds = data.get("dataset", {})
+        zip_b64 = ds.get("zip") or ""
+        if not zip_b64:
+            raise LegiScanError(f"getDataset returned no zip for session {session_id}")
+        return base64.b64decode(zip_b64)
 
 
 # ----------------------------------------------------------------------------
@@ -147,6 +188,39 @@ def _extract_subjects(bill: dict) -> list[str]:
     return subs
 
 
+def _index_votes_from_zip(zf: zipfile.ZipFile) -> dict[int, list[dict]]:
+    """Pre-index every vote JSON in the ZIP by integer bill_id — one pass.
+    Returns {legiscan_bill_id: [roll_call_summary, ...]} sorted by date.
+    """
+    index: dict[int, list[dict]] = {}
+    for name in zf.namelist():
+        if not (name.endswith(".json") and "/vote/" in name.lower()):
+            continue
+        try:
+            rc = json.loads(zf.read(name)).get("roll_call", {})
+        except Exception:
+            continue
+        bid = int(rc.get("bill_id") or 0)
+        if not bid:
+            continue
+        ch = rc.get("chamber") or ""
+        chamber = "House" if ch == "H" else ("Senate" if ch == "S" else ch)
+        index.setdefault(bid, []).append({
+            "chamber": chamber,
+            "date": rc.get("date") or "",
+            "desc": rc.get("desc") or "",
+            "yea": int(rc.get("yea") or 0),
+            "nay": int(rc.get("nay") or 0),
+            "nv": int(rc.get("nv") or 0),
+            "absent": int(rc.get("absent") or 0),
+            "passed": int(rc.get("passed") or 0),
+            "result": "Passed" if int(rc.get("passed") or 0) == 1 else "Failed",
+        })
+    for bid in index:
+        index[bid].sort(key=lambda r: r.get("date") or "")
+    return index
+
+
 def _extract_history_events(bill: dict, bill_id: str, area_id: int) -> list[dict]:
     rows = []
     for h in bill.get("history", []) or []:
@@ -159,7 +233,22 @@ def _extract_history_events(bill: dict, bill_id: str, area_id: int) -> list[dict
         if not etype:
             continue
         chamber = "senate" if h.get("chamber") == "S" else ("house" if h.get("chamber") == "H" else None)
-        rows.append(event_row(area_id, h.get("date"), bill_id, etype, chamber))
+        rows.append(event_row(area_id, h.get("date"), bill_id, etype, chamber,
+                               action_text=action))
+
+    # NOTE: we used to synthesize a separate "enacted" event at a
+    # parsed-from-text effective date. That produced junk (e.g. 2020 rows for
+    # 2025 bills when the parser misfired) and the UI kept rendering a
+    # confusing "In Effect" card that didn't match the history. The "signed"
+    # history event already represents "signed into law" — we treat that as
+    # the final stage in the UI (via STATUS_GROUP: signed → enacted).
+    # Synthesize a 'failed' event when bill status is 6 and history has no
+    # explicit failed action, so the timeline can still show it.
+    final_status = _current_status(bill)
+    if final_status == "failed" and not any(r.get("event_type") == "failed" for r in rows):
+        status_date = bill.get("status_date") or ""
+        if status_date:
+            rows.append(event_row(area_id, status_date, bill_id, "failed", None))
     return rows
 
 
@@ -172,124 +261,252 @@ def _current_status(bill: dict) -> str:
     return STATUS_CODE_MAP.get(code_int, "introduced")
 
 
+RESOLUTION_RE = re.compile(r"^(SJR|HJR|SR|HR|SJM|HJM|SCR|HCR|SM|HM)\d", re.I)
+
+
+def _bill_from_json(
+    bill: dict,
+    state: str,
+    area_id: int,
+    session_name: str,
+    votes_by_bill: dict | None = None,
+) -> tuple[dict | None, list[dict]]:
+    """Parse a single LegiScan bill JSON into a bills-row dict + event rows.
+    Returns (None, []) if the bill should be skipped (e.g. resolutions).
+
+    Stashes bill.state into the dict so _extract_history_events can locate
+    the local PDF for effective-date parsing. Pulls vote roll-calls from
+    a pre-indexed dict (built once per ZIP in fetch_state_from_zips).
+    """
+    bill_number = bill.get("bill_number") or ""
+    if RESOLUTION_RE.match(bill_number):
+        return None, []
+
+    # bill_id must include LegiScan's globally-unique integer bill_id — bill_number
+    # repeats every session (CO 2024 HB1001 vs CO 2025 HB1001 vs CO 2026 HB1001 all
+    # share "HB1001"), so keying by bill_number causes cross-session collisions and
+    # loses most of the current-session bills to dedupe.
+    legiscan_id = bill.get("bill_id")
+    if not legiscan_id:
+        return None, []
+    bill_id = f"legiscan:{state}:{legiscan_id}"
+    title = bill.get("title") or ""
+    description = bill.get("description") or ""
+    _, hits = is_cre_relevant(title, description, _extract_subjects(bill))
+
+    # Stash state on bill dict so the effective-date helper can find the PDF.
+    bill["state"] = state
+
+    votes_json = "[]"
+    if votes_by_bill is not None:
+        rolls = votes_by_bill.get(int(legiscan_id)) or []
+        if rolls:
+            votes_json = json.dumps(rolls, separators=(",", ":"))
+
+    row = {
+        "bill_id": bill_id,
+        "source": "legiscan",
+        "state": state,
+        "area_id": area_id,
+        "jurisdiction_level": "state",
+        "jurisdiction_name": f"{state} State",
+        "bill_number": bill_number,
+        "session": session_name,
+        "title": title,
+        "introduced_date": (bill.get("history", [{}])[0] or {}).get("date", ""),
+        "last_action_date": bill.get("status_date", ""),
+        "current_status": _current_status(bill),
+        "sponsors_json": json.dumps(_extract_sponsors(bill), separators=(",", ":")),
+        "subjects_json": json.dumps(_extract_subjects(bill), separators=(",", ":")),
+        "url": bill.get("state_link") or bill.get("url") or "",
+        "text_blob_path": "",
+        "cre_relevant": None,
+        "cre_keywords_hit": ";".join(hits),
+        "ai_summary": "",
+        "ai_risk_score": None,
+        "ai_risk_breakdown_json": "",
+        "ai_risk_rationale_json": "",
+        "ai_direction_rationale": "",
+        "impact_direction": "",
+        "ai_categories": "",
+        "ai_model_version": "",
+        "ai_analyzed_date": "",
+        "votes_json": votes_json,
+        "last_updated": datetime.utcnow().isoformat(timespec="seconds"),
+    }
+    events = _extract_history_events(bill, bill_id, area_id)
+    return row, events
+
+
+def fetch_state_from_zips(
+    state: str,
+    area_id: int,
+    zips_dir,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Ingest bills from manually-downloaded LegiScan dataset ZIPs.
+
+    Parses each `*.zip` under `zips_dir` (typically `etl-base/temp/legislation/zips/<STATE>/`)
+    using the same bill JSON -> row logic as the API path. No blob uploads —
+    the local ZIPs themselves are the audit trail; bills we filter out (or don't
+    ultimately keep after AI relevance scoring) shouldn't consume blob storage.
+    Re-parsing a specific bill later is trivial (read the ZIP).
+    """
+    import pathlib
+    zips_dir = pathlib.Path(zips_dir)
+    if not zips_dir.exists():
+        logger.warning("zips_dir does not exist: %s", zips_dir)
+        return pd.DataFrame(columns=BILLS_COLUMNS), pd.DataFrame(
+            columns=["area_id", "date", "metric", "bill_id", "event_type", "chamber", "value"])
+
+    zip_paths = sorted(zips_dir.glob("*.zip"))
+    if not zip_paths:
+        logger.warning("No .zip files found in %s", zips_dir)
+        return pd.DataFrame(columns=BILLS_COLUMNS), pd.DataFrame(
+            columns=["area_id", "date", "metric", "bill_id", "event_type", "chamber", "value"])
+
+    bill_rows: list[dict] = []
+    event_rows: list[dict] = []
+    seen = set()
+
+    for zpath in zip_paths:
+        logger.info("Parsing %s", zpath.name)
+        with zipfile.ZipFile(zpath) as zf:
+            # Derive session name from the ZIP filename if we can — LegiScan's
+            # download naming is typically `CO_2025-2025_Regular_Session.zip`.
+            session_name = zpath.stem.replace("_", " ")
+            bill_files = [n for n in zf.namelist()
+                          if n.endswith(".json") and "/bill/" in n.lower()]
+            logger.info("  %d bill JSONs in %s", len(bill_files), zpath.name)
+
+            # Index all roll-call votes in this ZIP once, then look up per bill.
+            votes_by_bill = _index_votes_from_zip(zf)
+            if votes_by_bill:
+                logger.info("  %d roll-call votes indexed", sum(len(v) for v in votes_by_bill.values()))
+
+            for name in bill_files:
+                try:
+                    raw = json.loads(zf.read(name))
+                except (json.JSONDecodeError, KeyError) as exc:
+                    logger.debug("Bad JSON in %s: %s", name, exc)
+                    continue
+
+                bill = raw.get("bill", raw)
+                # Prefer the session_name from the bill payload when present
+                # (keeps row's session matching what the bill itself says).
+                sess = (bill.get("session") or {}).get("session_name") or session_name
+                row, events = _bill_from_json(bill, state, area_id, sess, votes_by_bill=votes_by_bill)
+                if row is None:
+                    continue
+
+                bill_id = row["bill_id"]
+                if bill_id in seen:
+                    continue  # cross-session duplicate in this batch — keep first
+                seen.add(bill_id)
+
+                bill_rows.append(row)
+                event_rows.extend(events)
+
+    bills_df = pd.DataFrame(bill_rows, columns=BILLS_COLUMNS) if bill_rows else pd.DataFrame(columns=BILLS_COLUMNS)
+    events_df = (pd.DataFrame(event_rows) if event_rows
+                 else pd.DataFrame(columns=["area_id", "date", "metric", "bill_id", "event_type", "chamber", "value"]))
+    logger.info("Parsed %d bills, %d events from %d ZIP(s) for %s",
+                len(bill_rows), len(event_rows), len(zip_paths), state)
+    return bills_df, events_df
+
+
 def fetch_state_bills(
     state: str,
     area_id: int,
     session_ids: Iterable[int] | None = None,
     client: LegiScanClient | None = None,
-    store_text: bool = True,
+    max_sessions: int = 5,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Fetch all bills for the given state (and optional session subset).
+    """Fetch bills via bulk dataset downloads (one API call per session).
 
-    Returns (bills_df, events_df) — both following `ingest/schema.py` columns.
-    Raw per-bill JSON is written to blob as a side effect; no local raw files are created.
+    Uses getDatasetList + getDataset — each session is a single ZIP containing
+    every bill as a JSON file. This is O(sessions) API calls, not O(bills).
+    Resolutions / memorials are filtered out by bill-number prefix.
+
+    Returns (bills_df, events_df) following `ingest/schema.py` columns.
+    Raw per-bill JSON is written to blob; no local files are created.
     """
     client = client or LegiScanClient()
+    storage = get_storage()
+
+    datasets = client.get_dataset_list(state)
+    if not datasets:
+        logger.warning("No datasets returned for %s", state)
+        return pd.DataFrame(columns=BILLS_COLUMNS), pd.DataFrame(
+            columns=["area_id", "date", "metric", "bill_id", "event_type", "chamber", "value"])
+
+    # Sort by year descending; take the most recent N sessions.
+    if isinstance(datasets, dict):
+        datasets = list(datasets.values())
+    datasets = [d for d in datasets if isinstance(d, dict) and d.get("session_id")]
+    datasets.sort(key=lambda d: d.get("year_end") or d.get("year_start") or 0, reverse=True)
+    if session_ids is not None:
+        wanted = set(session_ids)
+        datasets = [d for d in datasets if d.get("session_id") in wanted]
+    else:
+        datasets = datasets[:max_sessions]
+
     cursor = _load_cursor(state)
     new_cursor = dict(cursor)
 
-    sessions = client.get_session_list(state)
-    if session_ids is not None:
-        wanted = set(session_ids)
-        sessions = [s for s in sessions if s.get("session_id") in wanted]
-
     bill_rows: list[dict] = []
     event_rows: list[dict] = []
-    storage = get_storage()
+    month = datetime.utcnow().strftime("%Y-%m")
 
-    for sess in sessions:
-        session_id = sess.get("session_id")
-        session_name = sess.get("session_name") or str(sess.get("year_start"))
-        try:
-            master = client.get_master_list_raw(session_id)
-        except LegiScanError as exc:
-            logger.warning("Skipping session %s: %s", session_id, exc)
+    for ds in datasets:
+        session_id = ds.get("session_id")
+        access_key = ds.get("access_key") or ""
+        session_name = ds.get("session_name") or str(ds.get("year_start"))
+        dataset_hash = ds.get("dataset_hash") or ""
+
+        if cursor.get(f"ds:{session_id}") == dataset_hash and dataset_hash:
+            logger.info("Session %s unchanged (hash match), skipping", session_name)
             continue
 
-        for _, entry in master.items():
-            bill_api_id = entry.get("bill_id")
-            change_hash = entry.get("change_hash")
-            if not bill_api_id or not change_hash:
-                continue
-            if cursor.get(str(bill_api_id)) == change_hash:
-                continue  # unchanged since last run
+        logger.info("Downloading bulk dataset for %s (session %s)", session_name, session_id)
+        try:
+            zip_bytes = client.get_dataset(session_id, access_key)
+        except LegiScanError as exc:
+            logger.warning("getDataset failed for session %s: %s", session_id, exc)
+            continue
 
-            try:
-                bill = client.get_bill(bill_api_id)
-            except LegiScanError as exc:
-                logger.warning("getBill failed for %s: %s", bill_api_id, exc)
-                continue
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            bill_files = [n for n in zf.namelist() if n.endswith(".json") and "/bill/" in n.lower()]
+            logger.info("  %d bill JSONs in ZIP for %s", len(bill_files), session_name)
 
-            bill_number = bill.get("bill_number") or ""
-            bill_id = f"legiscan:{state}:{bill_number}"
+            for name in bill_files:
+                try:
+                    raw = json.loads(zf.read(name))
+                except (json.JSONDecodeError, KeyError) as exc:
+                    logger.debug("Bad JSON in %s: %s", name, exc)
+                    continue
 
-            # Write raw JSON to blob, NEVER to local disk.
-            month = datetime.utcnow().strftime("%Y-%m")
-            raw_blob = f"legislation/raw/legiscan/{state}/{month}/{bill_id.replace(':', '_')}.json.gz"
-            try:
-                storage.upload_json_gz(raw_blob, bill)
-            except Exception as exc:
-                logger.warning("Failed to write raw JSON for %s: %s", bill_id, exc)
+                bill = raw.get("bill", raw)
+                row, events = _bill_from_json(bill, state, area_id, session_name)
+                if row is None:
+                    continue
 
-            sponsors = _extract_sponsors(bill)
-            subjects = _extract_subjects(bill)
-            title = bill.get("title") or ""
-            description = bill.get("description") or ""
-            # Keyword hits are a *hint* only — CRE relevance is decided by the AI batch step.
-            # No filter gate here; the 20x plan budget covers fetching everything.
-            _, hits = is_cre_relevant(title, description, subjects)
+                bill_id = row["bill_id"]
+                raw_blob = f"legislation/raw/legiscan/{state}/{month}/{bill_id.replace(':', '_')}.json.gz"
+                try:
+                    storage.upload_json_gz(raw_blob, bill)
+                except Exception as exc:
+                    logger.debug("Blob write failed for %s: %s", bill_id, exc)
 
-            text_blob_path = ""
-            if store_text:
-                doc_id = None
-                for t in bill.get("texts", []) or []:
-                    if t.get("mime") in ("application/pdf", "text/html") and t.get("doc_id"):
-                        doc_id = t["doc_id"]
-                        break
-                if doc_id:
-                    try:
-                        txt = client.get_bill_text(doc_id)
-                        pdf_bytes = base64.b64decode(txt.get("doc", "")) if txt.get("doc") else b""
-                        if pdf_bytes:
-                            text_blob_path = f"legislation/text/{bill_id.replace(':', '_')}.pdf"
-                            storage.upload_bytes(text_blob_path, pdf_bytes, content_type="application/pdf")
-                    except Exception as exc:
-                        logger.warning("getBillText failed for %s: %s", bill_id, exc)
+                bill_rows.append(row)
+                event_rows.extend(events)
 
-            bill_rows.append({
-                "bill_id": bill_id,
-                "source": "legiscan",
-                "state": state,
-                "area_id": area_id,
-                "jurisdiction_level": "state",
-                "jurisdiction_name": f"{state} State",
-                "bill_number": bill_number,
-                "session": session_name,
-                "title": title,
-                "introduced_date": (bill.get("history", [{}])[0] or {}).get("date", ""),
-                "last_action_date": bill.get("status_date", ""),
-                "current_status": _current_status(bill),
-                "sponsors_json": json.dumps(sponsors, separators=(",", ":")),
-                "subjects_json": json.dumps(subjects, separators=(",", ":")),
-                "url": bill.get("state_link") or bill.get("url") or "",
-                "text_blob_path": text_blob_path,
-                "cre_relevant": None,          # set by AI enrichment
-                "cre_keywords_hit": ";".join(hits),
-                "ai_summary": "",
-                "ai_risk_score": None,
-                "ai_risk_breakdown_json": "",
-                "ai_model_version": "",
-                "last_updated": datetime.utcnow().isoformat(timespec="seconds"),
-            })
-
-            event_rows.extend(_extract_history_events(bill, bill_id, area_id))
-            new_cursor[str(bill_api_id)] = change_hash
-            time.sleep(0.05)   # gentle pacing — LegiScan allows 30k/month, don't burn quota
+        new_cursor[f"ds:{session_id}"] = dataset_hash
 
     _save_cursor(state, new_cursor)
 
     bills_df = pd.DataFrame(bill_rows, columns=BILLS_COLUMNS) if bill_rows else pd.DataFrame(columns=BILLS_COLUMNS)
     events_df = (pd.DataFrame(event_rows) if event_rows
                  else pd.DataFrame(columns=["area_id", "date", "metric", "bill_id", "event_type", "chamber", "value"]))
+    logger.info("Fetched %d bills, %d events for %s across %d sessions",
+                len(bill_rows), len(event_rows), state, len(datasets))
     return bills_df, events_df

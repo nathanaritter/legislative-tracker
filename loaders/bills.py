@@ -1,17 +1,15 @@
 """
 Load bills, bill events, and geographic lookup data.
 
-Reads parquet from local ../etl-base/parquet/... (USE_AZURE=false) or az:// blob (USE_AZURE=true).
-If the parquet files don't exist yet (before the first ETL run), returns in-memory sample data so
-the Dash app is still runnable for UI development.
+Reads parquet from local ../etl-base/parquet/... (USE_AZURE=false) or az:// blob
+(USE_AZURE=true). When parquet is absent, returns empty frames — the app renders
+its "No bills." empty state rather than synthesizing fake rows.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from functools import lru_cache
-from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -55,185 +53,26 @@ def _read_csv(path):
         return None
 
 
-# ----------------------------------------------------------------------------
-# Sample fallback data — lets the UI render before the first ETL run.
-# Real data takes over the moment bills.parquet exists.
-# ----------------------------------------------------------------------------
 
-def _sample_bills() -> pd.DataFrame:
-    """DEMO-ONLY placeholder data. Bill numbers all start with DEMO- so they
-    can't be mistaken for real legislation. Replaced the moment a real
-    bills.parquet exists under ../etl-base/parquet/market/legislation/.
-    """
-    today = datetime.today().date()
-
-    def _breakdown(score: int) -> str:
-        # Distribute the composite score across the 5 components proportionally
-        # to their max weights so demo bars look realistic but varied.
-        maxes = {"operational_impact": 30, "capital_cost_impact": 25,
-                 "passage_probability": 20, "scope_breadth": 15, "urgency": 10}
-        total_max = sum(maxes.values())
-        factor = score / 100.0
-        out = {}
-        for k, m in maxes.items():
-            # Small deterministic jitter per key so components differ.
-            jitter = ((hash(k) % 7) - 3) / 10.0
-            out[k] = max(0, min(m, round(m * factor + jitter)))
-        return json.dumps(out)
-
-    def _rationale(score: int) -> str:
-        severity = "low" if score < 40 else ("moderate" if score < 70 else "high")
-        return json.dumps({
-            "operational_impact": f"Demo rationale: {severity} operational impact assessed from the bill summary.",
-            "capital_cost_impact": f"Demo rationale: {severity} projected capex and fees exposure.",
-            "passage_probability": "Demo rationale: derived from current status, sponsor count, and chamber math.",
-            "scope_breadth": "Demo rationale: jurisdiction population × asset classes touched.",
-            "urgency": "Demo rationale: estimated effective date proximity.",
-        })
-
-    sponsors_demo = '[{"name":"Demo Sponsor A","party":"D","role":"Senator"},' \
-                    '{"name":"Demo Sponsor B","party":"R","role":"Representative"}]'
-
-    def _votes_for(status):
-        """Synthetic roll calls for bills that reached a chamber vote. Empty for
-        introduced / in-committee bills."""
-        if status in ("enacted",):
-            return json.dumps([
-                {"chamber": "House", "date": "2025-10-08", "yea": 88, "nay": 56, "nv": 2, "absent": 4, "passed": 1, "result": "Passed"},
-                {"chamber": "Senate", "date": "2025-11-12", "yea": 22, "nay": 13, "nv": 0, "absent": 0, "passed": 1, "result": "Passed"},
-                {"chamber": "Governor", "date": "2025-11-20", "yea": 1, "nay": 0, "nv": 0, "absent": 0, "passed": 1, "result": "Signed"},
-            ])
-        if status == "passed":
-            return json.dumps([
-                {"chamber": "House", "date": "2026-01-14", "yea": 74, "nay": 62, "nv": 1, "absent": 5, "passed": 1, "result": "Passed"},
-                {"chamber": "Senate", "date": "2026-03-01", "yea": 19, "nay": 16, "nv": 0, "absent": 0, "passed": 1, "result": "Passed"},
-            ])
-        if status == "passed_chamber":
-            return json.dumps([
-                {"chamber": "Senate", "date": "2026-02-18", "yea": 24, "nay": 11, "nv": 0, "absent": 0, "passed": 1, "result": "Passed"},
-            ])
-        if status == "vetoed":
-            return json.dumps([
-                {"chamber": "House", "date": "2025-07-10", "yea": 51, "nay": 47, "nv": 0, "absent": 2, "passed": 1, "result": "Passed"},
-                {"chamber": "Senate", "date": "2025-08-02", "yea": 27, "nay": 14, "nv": 0, "absent": 0, "passed": 1, "result": "Passed"},
-                {"chamber": "Governor", "date": "2025-08-20", "yea": 0, "nay": 1, "nv": 0, "absent": 0, "passed": 0, "result": "Vetoed"},
-            ])
-        return "[]"
-
-    def mk(bill_id, state, area_id, level, juris, number, title, intro, last, status,
-           subjects, score, direction):
-        # direction: "favorable" | "adverse" | "mixed" — how the bill nets out for CRE.
-        return (
-            bill_id, "demo", state, area_id, level, juris,
-            number, "Demo session", title,
-            intro, last, status,
-            sponsors_demo, subjects, "", "",
-            True, "",
-            "Demo placeholder. Real bill summaries and risk rationales appear after LegiScan + the AI batch run.",
-            score, _breakdown(score), "demo", _rationale(score),
-            direction, _votes_for(status),
-        )
-
-    samples = [
-        # DEMO impact_direction is evaluated from the perspective of a MULTIFAMILY
-        # OWNER/INVESTOR: anything that increases rental supply, caps rents, slows
-        # evictions, or raises operating costs is ADVERSE. Anything that restricts
-        # competing supply or pre-empts local regulation is FAVORABLE.
-        mk("demo:CO:DEMO-01", "CO", 8,  "state", "Colorado State", "DEMO-01", "Local Rent Stabilization Authority", today - timedelta(days=120), today - timedelta(days=15),  "passed_chamber", '["rent_control"]',      72, "adverse"),    # rent caps
-        mk("demo:CO:DEMO-02", "CO", 8,  "state", "Colorado State", "DEMO-02", "Utility Billing Transparency",        today - timedelta(days=60),  today - timedelta(days=20),  "in_committee",   '["habitability"]',      55, "adverse"),    # RUBS markup ban
-        mk("demo:CO:DEMO-03", "CO", 8,  "state", "Colorado State", "DEMO-03", "Uniform Property-Tax Protest Rules",  today - timedelta(days=150), today - timedelta(days=30),  "passed",         '["property_tax"]',      48, "favorable"),  # easier appeals
-        mk("demo:CO:DEMO-04", "CO", 8,  "state", "Colorado State", "DEMO-04", "Tenant-Lawyer Funding",               today - timedelta(days=70),  today - timedelta(days=25),  "in_committee",   '["eviction"]',          40, "adverse"),    # slower evictions
-        mk("demo:CO:DEMO-05", "CO", 8,  "state", "Colorado State", "DEMO-05", "Surveillance Pricing Ban",            today - timedelta(days=40),  today - timedelta(days=10),  "introduced",     '["rent_control"]',      68, "adverse"),    # limits RMS pricing
-        mk("demo:TX:DEMO-06", "TX", 48, "state", "Texas State",    "DEMO-06", "Local Pre-emption Act (DEMO)",        today - timedelta(days=400), today - timedelta(days=260), "enacted",        '["zoning","land_use"]', 58, "favorable"),  # blocks local rent/tenant rules
-        mk("demo:FL:DEMO-07", "FL", 12, "state", "Florida State",  "DEMO-07", "Residential Landlord Pre-emption",    today - timedelta(days=320), today - timedelta(days=220), "enacted",        '["rent_control"]',      60, "favorable"),  # blocks local rent caps
-        mk("demo:FL:DEMO-08", "FL", 12, "state", "Florida State",  "DEMO-08", "Property Insurance Transparency",     today - timedelta(days=130), today - timedelta(days=40),  "passed_chamber", '["insurance"]',         50, "mixed"),      # rate board could help or hurt
-        mk("demo:AZ:DEMO-09", "AZ", 4,  "state", "Arizona State",  "DEMO-09", "Starter Home Zoning",                 today - timedelta(days=90),  today - timedelta(days=5),   "passed",         '["zoning","adu"]',      74, "adverse"),    # expands SFR/ADU supply
-        mk("demo:UT:DEMO-10", "UT", 49, "state", "Utah State",     "DEMO-10", "Housing Affordability Amendments",    today - timedelta(days=180), today - timedelta(days=95),  "enacted",        '["affordable_housing"]',65, "adverse"),    # mandates missing-middle supply
-        # City-level DEMO bills
-        mk("demo:denver:DEMO-11",    "CO", 8,  "city", "Denver",             "Denver DEMO-11",    "Short-Term Rental Enforcement",   today - timedelta(days=220), today - timedelta(days=185), "passed",         '["short_term_rental"]', 44, "favorable"),  # restricts STR competition
-        mk("demo:austin:DEMO-12",    "TX", 48, "city", "Austin",             "Austin DEMO-12",    "Compatibility Standards Overhaul",today - timedelta(days=160), today - timedelta(days=45),  "passed_chamber", '["zoning"]',            52, "adverse"),    # liberalizes zoning -> more MF supply
-        mk("demo:nashville:DEMO-13", "TN", 47, "city", "Nashville-Davidson", "Nashville DEMO-13", "Workforce Housing Expansion",     today - timedelta(days=75),  today - timedelta(days=15),  "in_committee",   '["affordable_housing"]',40, "adverse"),    # PILOT + TIF -> competing AH supply
-    ]
-    cols = [
-        "bill_id", "source", "state", "area_id", "jurisdiction_level", "jurisdiction_name",
-        "bill_number", "session", "title", "introduced_date", "last_action_date", "current_status",
-        "sponsors_json", "subjects_json", "url", "text_blob_path",
-        "cre_relevant", "cre_keywords_hit",
-        "ai_summary", "ai_risk_score", "ai_risk_breakdown_json", "ai_model_version",
-        "ai_risk_rationale_json", "impact_direction", "votes_json",
-    ]
-    df = pd.DataFrame(samples, columns=cols)
-    df["introduced_date"] = pd.to_datetime(df["introduced_date"])
-    df["last_action_date"] = pd.to_datetime(df["last_action_date"])
-    return df
-
-
-def _sample_events() -> pd.DataFrame:
-    """Synthetic per-stage events for the DEMO sample bills so progression bars
-    inside each card have something to render. Stage coverage varies by bill so
-    the UI exercises all states (introduced, committee, passed chamber, passed,
-    signed, enacted, vetoed)."""
-    today = datetime.today().date()
-    t = today
-    rows = [
-        # DEMO-01 (passed_chamber)
-        ("demo:CO:DEMO-01", t - timedelta(days=120), "introduced", "senate"),
-        ("demo:CO:DEMO-01", t - timedelta(days=80),  "committee",  "senate"),
-        ("demo:CO:DEMO-01", t - timedelta(days=15),  "passed_chamber", "senate"),
-        # DEMO-02 (in_committee)
-        ("demo:CO:DEMO-02", t - timedelta(days=60),  "introduced", "house"),
-        ("demo:CO:DEMO-02", t - timedelta(days=20),  "committee",  "house"),
-        # DEMO-03 (passed)
-        ("demo:CO:DEMO-03", t - timedelta(days=150), "introduced", "senate"),
-        ("demo:CO:DEMO-03", t - timedelta(days=95),  "passed_chamber", "senate"),
-        ("demo:CO:DEMO-03", t - timedelta(days=30),  "passed", "house"),
-        # DEMO-04 (in_committee)
-        ("demo:CO:DEMO-04", t - timedelta(days=70),  "introduced", "house"),
-        ("demo:CO:DEMO-04", t - timedelta(days=25),  "committee",  "house"),
-        # DEMO-05 (introduced)
-        ("demo:CO:DEMO-05", t - timedelta(days=10),  "introduced", "house"),
-        # DEMO-06 (enacted)
-        ("demo:TX:DEMO-06", t - timedelta(days=400), "introduced", "house"),
-        ("demo:TX:DEMO-06", t - timedelta(days=320), "passed_chamber", "house"),
-        ("demo:TX:DEMO-06", t - timedelta(days=280), "passed", "senate"),
-        ("demo:TX:DEMO-06", t - timedelta(days=262), "signed", None),
-        ("demo:TX:DEMO-06", t - timedelta(days=260), "enacted", None),
-        # DEMO-07 (enacted)
-        ("demo:FL:DEMO-07", t - timedelta(days=320), "introduced", "house"),
-        ("demo:FL:DEMO-07", t - timedelta(days=260), "passed", "senate"),
-        ("demo:FL:DEMO-07", t - timedelta(days=220), "enacted", None),
-        # DEMO-08 (passed_chamber)
-        ("demo:FL:DEMO-08", t - timedelta(days=130), "introduced", "senate"),
-        ("demo:FL:DEMO-08", t - timedelta(days=40),  "passed_chamber", "senate"),
-        # DEMO-09 (passed)
-        ("demo:AZ:DEMO-09", t - timedelta(days=90),  "introduced", "house"),
-        ("demo:AZ:DEMO-09", t - timedelta(days=30),  "passed_chamber", "house"),
-        ("demo:AZ:DEMO-09", t - timedelta(days=5),   "passed", "senate"),
-        # DEMO-10 (enacted)
-        ("demo:UT:DEMO-10", t - timedelta(days=180), "introduced", "house"),
-        ("demo:UT:DEMO-10", t - timedelta(days=130), "passed", "senate"),
-        ("demo:UT:DEMO-10", t - timedelta(days=95),  "enacted", None),
-        # Denver DEMO-11 (passed)
-        ("demo:denver:DEMO-11", t - timedelta(days=220), "introduced", "council"),
-        ("demo:denver:DEMO-11", t - timedelta(days=185), "passed", "council"),
-        # Austin DEMO-12 (passed_chamber)
-        ("demo:austin:DEMO-12", t - timedelta(days=160), "introduced", "council"),
-        ("demo:austin:DEMO-12", t - timedelta(days=45),  "passed_chamber", "council"),
-        # Nashville DEMO-13 (in_committee)
-        ("demo:nashville:DEMO-13", t - timedelta(days=75), "introduced", "council"),
-        ("demo:nashville:DEMO-13", t - timedelta(days=15), "committee",  "council"),
-    ]
-    df = pd.DataFrame(rows, columns=["bill_id", "date", "event_type", "chamber"])
-    df["date"] = pd.to_datetime(df["date"])
-    return df
+_EMPTY_BILLS_COLS = [
+    "bill_id", "source", "state", "area_id", "jurisdiction_level", "jurisdiction_name",
+    "bill_number", "session", "title", "introduced_date", "last_action_date", "current_status",
+    "sponsors_json", "subjects_json", "url", "text_blob_path",
+    "cre_relevant", "cre_keywords_hit",
+    "ai_summary", "ai_risk_score", "ai_risk_breakdown_json",
+    "ai_risk_rationale_json", "ai_direction_rationale", "impact_direction",
+    "ai_categories", "ai_model_version", "ai_analyzed_date",
+    "votes_json",
+    "last_updated",
+]
 
 
 @lru_cache(maxsize=1)
 def load_bills() -> pd.DataFrame:
     df = _read_parquet(BILLS_PARQUET)
     if df is None or df.empty:
-        logger.info("bills.parquet not found — using sample data")
-        return _sample_bills()
+        logger.info("bills.parquet not found — returning empty frame")
+        return pd.DataFrame(columns=_EMPTY_BILLS_COLS)
     df["introduced_date"] = pd.to_datetime(df.get("introduced_date"), errors="coerce")
     df["last_action_date"] = pd.to_datetime(df.get("last_action_date"), errors="coerce")
     return df
@@ -243,8 +82,8 @@ def load_bills() -> pd.DataFrame:
 def load_events() -> pd.DataFrame:
     df = _read_parquet(BILL_EVENTS_PARQUET)
     if df is None or df.empty:
-        logger.info("bill_events.parquet not found — using sample data")
-        return _sample_events()
+        logger.info("bill_events.parquet not found — returning empty frame")
+        return pd.DataFrame(columns=["bill_id", "date", "event_type", "chamber"])
     df["date"] = pd.to_datetime(df.get("date"), errors="coerce")
     return df
 
@@ -284,31 +123,71 @@ def filter_bills(filters: dict) -> pd.DataFrame:
     # Always enforce CRE-relevance — non-CRE bills are not surfaced in this app.
     # `cre_relevant` is True, False, or None (unknown; before AI run treat as kept).
     if "cre_relevant" in bills.columns:
-        bills = bills[bills["cre_relevant"].fillna(True).astype(bool)]
+        bills = bills[bills["cre_relevant"].fillna(False).astype(bool)]
 
     states = filters.get("states") or []
     if states:
         bills = bills[bills["state"].isin(states)]
+
+    sessions = filters.get("sessions") or []
+    if sessions and "session" in bills.columns:
+        bills = bills[bills["session"].isin(sessions)]
 
     # Status filter is applied at event-level, not bill-level — see
     # callbacks/timeline.py render(). Bills stay in the frame as long as at
     # least one of their events matches the selected statuses; the timeline
     # then only emits cards for the matching stage-group events.
 
-    subjects = filters.get("subjects") or []
-    if subjects:
-        def has_subject(js):
+    # "Subjects" in the filter dict actually carries AI-category values (the
+    # sidebar was renamed to "AI category" — key left as `subjects` for
+    # backwards compat with existing store payloads).
+    categories = filters.get("subjects") or []
+    if categories and "ai_categories" in bills.columns:
+        import json as _json
+        def has_cat(js):
             try:
-                tags = json.loads(js) if isinstance(js, str) else (js or [])
+                tags = _json.loads(js) if isinstance(js, str) else (
+                    js if isinstance(js, (list, tuple)) else []
+                )
             except Exception:
                 return False
-            return any(s in tags for s in subjects)
-        bills = bills[bills["subjects_json"].apply(has_subject)]
+            tags_norm = {str(t).strip() for t in (tags or [])}
+            return any(c in tags_norm for c in categories)
+        bills = bills[bills["ai_categories"].apply(has_cat)]
 
+    # Total impact score range.
     risk = filters.get("risk") or [0, 100]
-    if "ai_risk_score" in bills.columns:
+    if "ai_risk_score" in bills.columns and (risk[0] > 0 or risk[1] < 100):
         mask = bills["ai_risk_score"].fillna(0).between(risk[0], risk[1])
         bills = bills[mask]
+
+    # Per-component ranges. Each slider filters on its component's value
+    # from `ai_risk_breakdown_json`; they AND together. Rows without a
+    # breakdown (un-enriched) are treated as 0 and only survive if the
+    # slider's low bound is 0.
+    component_ranges = filters.get("component_ranges") or {}
+    if component_ranges and "ai_risk_breakdown_json" in bills.columns:
+        import json as _json
+        def _component_val(js, key):
+            try:
+                d = _json.loads(js) if isinstance(js, str) else (js or {})
+                return int(d.get(key, 0) or 0)
+            except Exception:
+                return 0
+        component_maxes = {
+            "operational_impact": 30, "capital_cost_impact": 20,
+            "pnl_impact": 25, "scope_breadth": 15, "enforcement_teeth": 10,
+        }
+        for comp, rng in component_ranges.items():
+            lo, hi = rng[0], rng[1]
+            # Skip component filters left at their default [0, max] — they
+            # don't narrow anything and iterating would cost perf for nothing.
+            if lo <= 0 and hi >= component_maxes.get(comp, 100):
+                continue
+            vals = bills["ai_risk_breakdown_json"].apply(
+                lambda js, k=comp: _component_val(js, k)
+            )
+            bills = bills[vals.between(lo, hi)]
 
     start = pd.to_datetime(filters.get("start")) if filters.get("start") else None
     end = pd.to_datetime(filters.get("end")) if filters.get("end") else None
@@ -331,3 +210,56 @@ def get_bill(bill_id: str) -> dict | None:
 def get_events_for(bill_ids) -> pd.DataFrame:
     df = load_events()
     return df[df["bill_id"].isin(bill_ids)].copy()
+
+
+@lru_cache(maxsize=1)
+def load_sessions() -> pd.DataFrame:
+    """Synthesize session bounds from bill introduction and last-action dates.
+
+    Start = earliest introduced_date in the session.
+    End   = latest last_action_date in the session (so every bill's final
+            action — signing, veto, etc. — falls inside the band).
+
+    Returns columns: state, session_name, start_date, end_date, bill_count.
+    """
+    bills = load_bills()
+    if bills is None or bills.empty or "session" not in bills.columns:
+        return pd.DataFrame(columns=["state", "session_name", "start_date",
+                                      "end_date", "bill_count"])
+    df = bills[["bill_id", "state", "session", "introduced_date", "last_action_date"]].copy()
+    df["session_name"] = df["session"].fillna("").astype(str)
+    df = df[df["session_name"] != ""]
+    df["intro_ts"] = pd.to_datetime(df["introduced_date"], errors="coerce")
+    df["last_ts"] = pd.to_datetime(df["last_action_date"], errors="coerce")
+    df = df.dropna(subset=["intro_ts"])
+    if df.empty:
+        return pd.DataFrame(columns=["state", "session_name", "start_date",
+                                      "end_date", "bill_count"])
+    g = df.groupby(["state", "session_name"]).agg(
+        start_date=("intro_ts", "min"),
+        end_date=("last_ts", "max"),
+        bill_count=("bill_id", "nunique"),
+    ).reset_index()
+    # Fill any null end_date (no last_action) with intro max + 30 days.
+    mask = g["end_date"].isna()
+    if mask.any():
+        fallback = df.groupby(["state", "session_name"])["intro_ts"].max().reset_index()
+        fallback.columns = ["state", "session_name", "fallback_end"]
+        g = g.merge(fallback, on=["state", "session_name"], how="left")
+        g.loc[mask, "end_date"] = g.loc[mask, "fallback_end"] + pd.Timedelta(days=30)
+        g = g.drop(columns=["fallback_end"])
+    return g.sort_values(["state", "start_date"]).reset_index(drop=True)
+
+
+def sessions_in_range(states, d_min, d_max) -> pd.DataFrame:
+    """Sessions intersecting the [d_min, d_max] window for the given state
+    list. Returns a DataFrame filtered and sorted by start_date."""
+    df = load_sessions()
+    if df.empty:
+        return df
+    if states:
+        df = df[df["state"].isin(states)]
+    d_min = pd.to_datetime(d_min)
+    d_max = pd.to_datetime(d_max)
+    df = df[(df["end_date"] >= d_min) & (df["start_date"] <= d_max)]
+    return df.sort_values("start_date").reset_index(drop=True)

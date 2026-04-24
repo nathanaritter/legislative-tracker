@@ -101,97 +101,103 @@ NAV_HEIGHT = "56px"
 # ============================
 STATES = ["CO", "TX", "FL", "UT", "VA", "MD", "NV", "TN", "GA", "AZ", "ID"]
 
-# Four consolidated status buckets shown in the UI. Each raw LegiScan / LegiStar
-# status maps into one of these via STATUS_GROUP.
+# Canonical timeline stages. Exactly four, mutually exclusive — these are the
+# only stage names anything in the UI should ever render.
+#   introduced  — bill was introduced (purple)
+#   passed      — passed BOTH chambers (blue)
+#   law         — signed into law by the governor (green) — final state
+#   killed      — vetoed / died / failed (gray) — final state
 STATUS_GROUPS = [
     ("introduced",  "Introduced"),
-    ("committee",   "In Committee"),
-    ("passed",      "Passed Legislature"),
-    ("enacted",     "In Effect"),
-    ("failed",      "Failed / Vetoed"),
+    ("passed",      "Awaiting Governor"),
+    ("law",         "Became Law"),
+    ("killed",      "Killed"),
 ]
+# Only passing BOTH chambers counts as "Awaiting Governor". First-chamber
+# passage is still "Introduced" from the user's perspective (the bill is
+# still inside the legislature).
 STATUS_GROUP = {
     "introduced":     "introduced",
     "amended":        "introduced",
-    # Committee events roll up into the Intro bucket — we don't show "Cmte" as
-    # its own stage. (Raw event_type still stored for audit.)
     "in_committee":   "introduced",
     "committee":      "introduced",
-    "passed_chamber": "passed",
+    "passed_chamber": "introduced",
     "passed":         "passed",
-    "signed":         "passed",
-    "enacted":        "enacted",
-    "vetoed":         "failed",
-    "failed":         "failed",
+    "signed":         "law",
+    "enacted":        "law",
+    "vetoed":         "killed",
+    "failed":         "killed",
 }
-# Stages we render on the timeline. Committee intentionally absent.
-STAGE_ORDER = ["introduced", "passed", "enacted"]
+STAGE_ORDER = ["introduced", "passed", "law", "killed"]
 STAGE_LABELS = {
     "introduced": "Intro",
-    "passed":     "Passed",
-    "enacted":    "Effect",
-    "failed":     "Failed",
+    "passed":     "Awaiting Gov",
+    "law":        "Became law",
+    "killed":     "Killed",
 }
 
-# Status buckets + colors mirror the Milestone PPTX regulatory timeline deck
-# (etl-base-adjacent design; see "update timeline/card_templates.md").
+# Raw status codes → UI label (for the modal "Status: X" meta line).
 STATUS_BUCKETS = [
-    ("enacted",         "In Effect",              "#2E7D32"),
-    ("signed",          "Signed / Passed Leg.",   "#1B5E83"),
-    ("passed",          "Signed / Passed Leg.",   "#1B5E83"),
-    ("passed_chamber",  "Signed / Passed Leg.",   "#1B5E83"),
-    ("in_committee",    "Introduced / Committee", "#6A4C93"),
-    ("committee",       "Introduced / Committee", "#6A4C93"),
-    ("introduced",      "Introduced / Committee", "#6A4C93"),
-    ("amended",         "Introduced / Committee", "#6A4C93"),
-    ("vetoed",          "Vetoed / Killed",        "#999999"),
-    ("failed",          "Vetoed / Killed",        "#999999"),
+    ("enacted",         "Became law",         "#2E7D32"),
+    ("signed",          "Became law",         "#2E7D32"),
+    ("passed",          "Awaiting Governor",  "#1B5E83"),
+    ("passed_chamber",  "Introduced",         "#6A4C93"),
+    ("in_committee",    "Introduced",         "#6A4C93"),
+    ("committee",       "Introduced",         "#6A4C93"),
+    ("introduced",      "Introduced",         "#6A4C93"),
+    ("amended",         "Introduced",         "#6A4C93"),
+    ("vetoed",          "Killed",             "#999999"),
+    ("failed",          "Killed",             "#999999"),
 ]
 STATUS_COLOR = {code: color for code, _label, color in STATUS_BUCKETS}
 STATUS_LABEL = {code: label for code, label, _c in STATUS_BUCKETS}
 
-# Legend shown in the title bar — status colors.
+# Legend shown in the title bar — the four canonical stages.
 LEGEND = [
-    ("In Effect",              "#2E7D32"),
-    ("Signed / Passed Leg.",   "#1B5E83"),
-    ("Introduced / Committee", "#6A4C93"),
-    ("Vetoed / Killed",        "#999999"),
-    ("Election / Vote",        "#8B6914"),
+    ("Introduced",       "#6A4C93"),
+    ("Awaiting Gov",     "#1B5E83"),
+    ("Became law",       "#2E7D32"),
+    ("Killed",           "#999999"),
 ]
 
 # Direction legend — shown next to the status legend in the title bar so the
 # user knows what the ▲ ▼ ◆ glyphs on cards and in the right sidebar mean.
 # Framed from the MF owner-operator lens (not a developer).
 DIRECTION_LEGEND = [
-    ("Favorable for MF owners", "▲", "#059669"),
-    ("Adverse for MF owners",   "▼", "#dc2626"),
+    ("Favorable for MF owners", "▲", "#16a34a"),
+    ("Adverse for MF owners",   "▼", "#ef4444"),
     ("Mixed impact",            "◆", "#d97706"),
 ]
 
 # Backwards-compatible alias used by a couple of older render paths.
 EVENT_COLORS = STATUS_COLOR
 
-# CRE subject tags (source of truth: etl-base/etl/legislation/cre_keywords.yml)
-CRE_SUBJECTS = [
-    "zoning",
-    "land_use",
-    "property_tax",
-    "rent_control",
-    "eviction",
-    "habitability",
-    "adu",
-    "short_term_rental",
-    "eminent_domain",
-    "tif",
-    "opportunity_zone",
-    "historic_preservation",
-    "impact_fee",
-    "affordable_housing",
-    "building_code",
-    "permitting",
-    "mortgage",
-    "foreclosure",
-    "hoa",
-    "insurance",
-    "transfer_tax",
+# Milestone CRE category taxonomy. The snake_case value is the canonical
+# identifier stored in `ai_categories` and used for filtering; the display
+# label is shown to the user everywhere in the UI. Never surface the
+# snake_case form in the app.
+CRE_CATEGORIES = [
+    ("zoning",                "Zoning"),
+    ("land_use",              "Land Use"),
+    ("adu",                   "ADU"),
+    ("permitting",            "Permitting"),
+    ("impact_fee",            "Impact Fees"),
+    ("historic_preservation", "Historic Preservation"),
+    ("property_tax",          "Property Tax"),
+    ("transfer_tax",          "Transfer Tax"),
+    ("tif",                   "Tax Increment Financing"),
+    ("opportunity_zone",      "Opportunity Zones"),
+    ("rent_control",          "Rent Control"),
+    ("eviction",              "Eviction"),
+    ("habitability",          "Habitability"),
+    ("affordable_housing",    "Affordable Housing"),
+    ("short_term_rental",     "Short-Term Rentals"),
+    ("building_code",         "Building Code"),
+    ("eminent_domain",        "Eminent Domain"),
+    ("mortgage",              "Mortgage"),
+    ("foreclosure",           "Foreclosure"),
+    ("hoa",                   "HOA"),
+    ("insurance",             "Insurance"),
 ]
+CRE_SUBJECTS = [code for code, _label in CRE_CATEGORIES]   # backwards-compat
+CATEGORY_LABEL = {code: label for code, label in CRE_CATEGORIES}

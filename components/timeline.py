@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import json
 
 import pandas as pd
-from dash import html
+from dash import html, dcc
 
 from config import STATUS_GROUP, STAGE_LABELS, GRAY_500
 
@@ -28,11 +28,18 @@ from config import STATUS_GROUP, STAGE_LABELS, GRAY_500
 # below; more rows = taller canvas, which the wrap scrolls vertically.
 AXIS_Y = 380
 CARD_W = 188
-CARD_H = 96
-MIN_CANVAS_WIDTH = 1400
+CARD_H = 118
+MIN_CANVAS_WIDTH = 700
 MARGIN_X = 110
-PIXELS_PER_DAY_TARGET = 5.2
-MAX_CANVAS_WIDTH = 14000
+# Natural density at zoom=1. Higher density → fewer cards collide in the
+# packer (fewer "stages hidden" warnings). User still uses CSS zoom to zoom in
+# further when they want cards separated visually.
+PIXELS_PER_DAY_TARGET = 8.0
+MAX_CANVAS_WIDTH = 12000
+
+# Past this card count the packer overflow + DOM size makes the timeline
+# unusable. Show an empty state with a "narrow your filters" prompt instead.
+MAX_CARDS = 600
 
 # (top_px, anchor_side). Row packing walks this list in order, so alternating
 # above/below makes them fill symmetrically instead of piling all cards above
@@ -40,29 +47,28 @@ MAX_CANVAS_WIDTH = 14000
 ROWS = [
     # Tick marks occupy y=372–390 (axis at 380), tick labels y=394–412. Cards
     # should never enter either band, so above_near bottom is ≤ 366 and
-    # below_near top is ≥ 420. Row height = 110px (96 card + 14 gap) per slot.
-    (250, "above_near"),
-    (440, "below_near"),
-    (140, "above_mid"),
+    # below_near top is ≥ 420. Row height = 130px (118 card + 12 gap).
+    (230, "above_near"),
+    (420, "below_near"),
+    (100, "above_mid"),
     (550, "below_mid"),
-    (30,  "above_far"),
-    (660, "below_far1"),
-    (770, "below_far2"),
-    (880, "below_far3"),
-    (990,  "below_far4"),
-    (1100, "below_far5"),
-    (1210, "below_far6"),
-    (1320, "below_far7"),
+    (680, "below_far1"),
+    (810, "below_far2"),
+    (940, "below_far3"),
+    (1070, "below_far4"),
+    (1200, "below_far5"),
+    (1330, "below_far6"),
+    (1460, "below_far7"),
+    (1590, "below_far8"),
 ]
-CANVAS_HEIGHT = 1420
+CANVAS_HEIGHT = 1750
 
 
 STAGE_COLORS = {
     "introduced": "#6A4C93",
-    "committee":  "#6A4C93",
     "passed":     "#1B5E83",
-    "enacted":    "#2E7D32",
-    "failed":     "#999999",
+    "law":        "#2E7D32",
+    "killed":     "#999999",
 }
 
 
@@ -84,8 +90,13 @@ def _short_title(title: str, n: int = 50) -> str:
 
 
 def _pack_rows(cards, min_gap=CARD_W + 10):
+    """Pack cards into non-overlapping rows, expanding downward below the axis
+    as density demands — no card is ever dropped. ROWS is the preferred-order
+    list (alternating above/below the axis, filling close-to-axis first); any
+    overflow spawns extra rows below the last below_far* slot so the visual
+    never sees a missing card."""
     row_last = [-10_000] * len(ROWS)
-    dropped = 0
+    row_defs = list(ROWS)  # working copy we can append to
     for c in cards:
         chosen = None
         for i, last in enumerate(row_last):
@@ -93,57 +104,34 @@ def _pack_rows(cards, min_gap=CARD_W + 10):
                 chosen = i
                 break
         if chosen is None:
-            dropped += 1
-            c.row = -1
-            continue
+            # Spawn a new below-axis row beneath the lowest existing one.
+            new_top = max(t for t, _ in row_defs) + 130
+            row_defs.append((new_top, f"below_overflow_{len(row_defs)}"))
+            row_last.append(-10_000)
+            chosen = len(row_defs) - 1
         row_last[chosen] = c.x_px
         c.row = chosen
-    return [c for c in cards if c.row >= 0], dropped
-
-
-def _density_min_width(event_dates, d_min, d_max, min_gap=CARD_W + 10, rows=len(ROWS)):
-    """Minimum canvas width such that the densest min_gap-wide window holds no
-    more cards than we have rows. Used as a floor when zooming out."""
-    total_days = max(1, (d_max - d_min).days)
-    canvas_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET))
-    dates = sorted(event_dates) if event_dates else []
-    if not dates or len(dates) <= rows:
-        return canvas_w
-    for _ in range(8):
-        usable = canvas_w - 2 * MARGIN_X
-        px_per_day = usable / total_days
-        window_days = min_gap / px_per_day if px_per_day else total_days
-        max_cluster = 1
-        j = 0
-        for i in range(len(dates)):
-            if j < i:
-                j = i
-            while j < len(dates) and (dates[j] - dates[i]).days < window_days:
-                j += 1
-            max_cluster = max(max_cluster, j - i)
-        if max_cluster <= rows:
-            return canvas_w
-        canvas_w = int(canvas_w * (max_cluster / rows))
-    return canvas_w
+    return cards, 0, row_defs
 
 
 def _canvas_width_for(event_dates, d_min, d_max, min_gap=CARD_W + 10, rows=len(ROWS), zoom=1.0):
-    """Canvas width honoring (a) the density floor (zoom-out can't make cards
-    overlap beyond the row budget) and (b) the caller-supplied zoom multiplier.
+    """Natural canvas width at zoom=1.
 
-    zoom > 1: canvas grows proportionally (zoom-in).
-    zoom < 1: canvas shrinks but not below the density floor (zoom-out stops
-               once the densest window already fills all rows).
+    Width is driven by **event count**, not date range: the whole point of
+    this chart is to show cards side-by-side, so a dense month needs a wide
+    canvas regardless of how few days it spans. Formula: give each event
+    roughly half a card-width of horizontal real-estate so the packer can fit
+    ~2 events per horizontal slot across the visible rows before having to
+    spawn overflow rows.
     """
-    total_days = max(1, (d_max - d_min).days)
-    base_w = max(MIN_CANVAS_WIDTH, int(total_days * PIXELS_PER_DAY_TARGET))
-    density_min = _density_min_width(event_dates, d_min, d_max, min_gap=min_gap, rows=rows)
-    # "Fit" width = whichever of (time span, density requirement) is larger.
-    # Zoom multiplies the fit; density floor still applies so zoom-out never
-    # collapses cards into each other.
-    fit = max(base_w, density_min)
-    final = max(int(fit * zoom), density_min)
-    return int(min(final, MAX_CANVAS_WIDTH * 4))
+    n_events = max(1, len(list(event_dates)))
+    # Per-event budget bumped to 220 so even date-clustered events (multiple
+    # stages of one bill within a 30-day window) get enough horizontal room
+    # for cards to lay out side-by-side instead of stacking into overflow
+    # rows. Sparse dockets get a comfortable minimum; dense dockets cap.
+    per_event = 220
+    w = int(n_events * per_event * zoom)
+    return max(MIN_CANVAS_WIDTH, min(w, MAX_CANVAS_WIDTH))
 
 
 def _tick_positions(d_min, d_max, canvas_w):
@@ -195,21 +183,28 @@ def _stage_card(card: EventCard, bill: dict, top: int, left: int) -> html.Div:
         html.Span(stage_label, className="stage-label"),
         html.Span(date_str, className="stage-date"),
     ]
-    chip = _risk_chip_inline(bill.get("ai_risk_score"), bill.get("impact_direction"))
-    if chip is not None:
-        header_children.append(chip)
 
     children = [
         html.Div(header_children, className="header", style={"background": color}),
         html.Div(
             [
                 html.Span(bill.get("bill_number", ""), className="bill-num"),
-                html.Span(_short_title(bill.get("title", ""), 50), className="bill-title"),
+                html.Span(bill.get("title", "") or "", className="bill-title"),
             ],
             className="body",
         ),
-        html.Div(bill.get("jurisdiction_name", ""), className="juris"),
     ]
+    # Footer strip: impact score on the left, jurisdiction on the right. One
+    # row so the body above gets the full vertical budget for the title.
+    chip = _risk_chip_inline(bill.get("ai_risk_score"), bill.get("impact_direction"))
+    footer_children = []
+    if chip is not None:
+        footer_children.append(chip)
+    else:
+        footer_children.append(html.Span("", className="stage-score-placeholder"))
+    footer_children.append(html.Span(bill.get("jurisdiction_name", ""),
+                                      className="card-juris"))
+    children.append(html.Div(footer_children, className="card-footer"))
 
     return html.Div(
         children,
@@ -218,7 +213,8 @@ def _stage_card(card: EventCard, bill: dict, top: int, left: int) -> html.Div:
              "date": iso_date},
         n_clicks=0,
         style={"top": f"{top}px", "left": f"{left}px"},
-        **{"data-event-date": iso_date, "data-bill-id": bill["bill_id"], "data-row": str(-1)},
+        **{"data-event-date": iso_date, "data-bill-id": bill["bill_id"],
+           "data-stage-group": card.stage_group, "data-row": str(-1)},
     )
 
 
@@ -226,7 +222,6 @@ DIRECTION_GLYPH = {
     "favorable": "▲",
     "adverse":   "▼",
     "mixed":     "◆",
-    "neutral":   "●",
 }
 
 
@@ -253,17 +248,24 @@ def build_timeline_card_area():
             html.Div(
                 [
                     html.Span(
-                        "Drag horizontally to zoom · double-click to fit all",
+                        "Drag to pan · Ctrl+wheel or +/− to zoom · double-click to fit",
                         className="timeline-hint",
                         style={"marginRight": "10px"},
                     ),
-                    # Clientside reset button — handled by assets/timeline_zoom.js.
+                    html.Button(html.I(className="bi bi-zoom-out"),
+                                id="timeline-zoom-out-btn", className="zoom-btn",
+                                title="Zoom out"),
+                    html.Button(html.I(className="bi bi-zoom-in"),
+                                id="timeline-zoom-in-btn", className="zoom-btn",
+                                title="Zoom in",
+                                style={"marginLeft": "4px"}),
                     html.Button(
                         [html.I(className="bi bi-arrow-counterclockwise",
                                  style={"marginRight": "4px"}), "Reset view"],
                         id="timeline-reset-btn",
                         className="zoom-btn",
-                        title="Reset zoom to default",
+                        style={"marginLeft": "8px"},
+                        title="Reset zoom to default and clear hide state",
                     ),
                 ],
                 style={"display": "flex", "alignItems": "center"},
@@ -277,10 +279,15 @@ def build_timeline_card_area():
             header_row,
             html.Div(id="timeline-meta",
                      style={"fontSize": "11px", "color": GRAY_500, "marginBottom": "8px"}),
-            html.Div(
-                html.Div(id="timeline-canvas", className="timeline-canvas"),
-                className="timeline-wrap",
-                id="timeline-wrap",
+            dcc.Loading(
+                id="timeline-loading",
+                type="circle",
+                color="#1B5E83",
+                children=html.Div(
+                    html.Div(id="timeline-canvas", className="timeline-canvas"),
+                    className="timeline-wrap",
+                    id="timeline-wrap",
+                ),
             ),
         ],
         className="card",
@@ -290,18 +297,66 @@ def build_timeline_card_area():
 def _collect_events(bills: pd.DataFrame, events: pd.DataFrame) -> list[EventCard]:
     """Build one EventCard per (bill, stage-bucket). Committee actions roll up
     into Intro — so if a bill has Introduced + Referred + Reported events, only
-    the earliest one produces an Intro card, not three."""
+    the earliest one produces an Intro card, not three.
+
+    LegiScan does not reliably emit an "Enrolled" action for every bill — many
+    states jump straight from the second-chamber "Passed" action to a "Signed
+    by Governor" action with nothing in between. For any bill that ended up
+    signed/enacted, we synthesize an "Awaiting Governor" card at the LAST
+    passed_chamber date so the timeline shows intro → awaiting gov → became
+    law as three cards instead of two.
+    """
     cards_raw: list[EventCard] = []
     bills_by_id = {r["bill_id"]: r for _, r in bills.iterrows()}
+
+    # Pre-compute, per bill: latest passed_chamber date + whether a
+    # signed/enacted event exists. Used below to synthesize "Awaiting Gov".
+    last_passed_chamber: dict[str, pd.Timestamp] = {}
+    has_became_law: set = set()
+    if events is not None and not events.empty:
+        for _, e in events.iterrows():
+            bid = e["bill_id"]
+            if bid not in bills_by_id:
+                continue
+            etype = e.get("event_type") or ""
+            d = pd.to_datetime(e.get("date"), errors="coerce")
+            if pd.isna(d):
+                continue
+            if etype == "passed_chamber":
+                cur = last_passed_chamber.get(bid)
+                if cur is None or d > cur:
+                    last_passed_chamber[bid] = d
+            elif etype in ("signed", "enacted"):
+                has_became_law.add(bid)
 
     if events is not None and not events.empty:
         for _, e in events.iterrows():
             bid = e["bill_id"]
             if bid not in bills_by_id:
                 continue
-            group = STATUS_GROUP.get(e.get("event_type") or "", None)
+            etype = e.get("event_type") or ""
+            group = STATUS_GROUP.get(etype, None)
             if group is None:
                 continue
+            # LegiScan logs "Signed by the Speaker" and "Signed by the President"
+            # as chamber-transmittal actions — they are NOT the governor signing
+            # the bill into law. Drop signed events that lack "Governor" in the
+            # raw action text so a vetoed bill doesn't sprout a phantom
+            # "Became law" card between its passage and its veto.
+            if etype in ("signed", "enacted"):
+                action = str(e.get("action_text") or "").lower()
+                if action and "governor" not in action and "chaptered" not in action and "effective" not in action:
+                    continue
+            # LegiScan logs intermediate failures ("Amendment(s) Failed",
+            # "Indefinitely Postponed in committee") with event_type=failed
+            # even when the bill ultimately becomes law. Suppress these
+            # killed-stage events on bills that became law or made it through
+            # both chambers — the bill itself isn't dead.
+            if group == "killed":
+                bill_row = bills_by_id.get(bid)
+                cur_status = (bill_row.get("current_status") if bill_row is not None else "") or ""
+                if cur_status in ("enacted", "passed", "passed_chamber") or bid in has_became_law:
+                    continue
             d = pd.to_datetime(e.get("date"), errors="coerce")
             if pd.isna(d):
                 continue
@@ -309,8 +364,38 @@ def _collect_events(bills: pd.DataFrame, events: pd.DataFrame) -> list[EventCard
                 bill_id=bid,
                 event_date=d,
                 stage_group=group,
-                raw_event_type=e.get("event_type"),
+                raw_event_type=etype,
             ))
+
+    # Synthesize an "Awaiting Governor" (passed) card for every bill that
+    # cleared both chambers — whether it went on to be signed OR is currently
+    # sitting on the governor's desk. LegiScan does NOT emit an "Enrolled"
+    # action for most states, so we detect the moment by:
+    #   1. current_status == "passed" (enrolled, awaiting gov), OR
+    #   2. current_status == "enacted" OR there's a signed/enacted event
+    # In both cases the last `passed_chamber` event is the moment the bill
+    # actually cleared the legislature.
+    for bid, last_pc in last_passed_chamber.items():
+        bill_row = bills_by_id.get(bid)
+        cur_status = (bill_row.get("current_status") if bill_row is not None else "") or ""
+        # Vetoed bills DID pass both chambers and sit on the governor's desk,
+        # so they legitimately had an Awaiting-Gov stage. Show it.
+        cleared_chambers = (
+            cur_status in ("passed", "enacted", "vetoed") or bid in has_became_law
+        )
+        if not cleared_chambers:
+            continue
+        already_has_passed = any(
+            c.bill_id == bid and c.stage_group == "passed" for c in cards_raw
+        )
+        if already_has_passed:
+            continue
+        cards_raw.append(EventCard(
+            bill_id=bid,
+            event_date=last_pc,
+            stage_group="passed",
+            raw_event_type="passed",
+        ))
 
     # Dedupe: keep the earliest card per (bill_id, stage_group).
     by_key: dict[tuple[str, str], EventCard] = {}
@@ -340,22 +425,41 @@ def _collect_events(bills: pd.DataFrame, events: pd.DataFrame) -> list[EventCard
     return cards
 
 
-def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None):
-    zoom = 1.0  # Server renders at 100%; assets/timeline_zoom.js handles any zoom
+def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None,
+                    zoom: float = 1.0):
+    """Emit the complete timeline DOM at the given zoom factor. Zoom is a pure
+    horizontal multiplier on canvas width (and therefore on every element's x);
+    vertical layout and row-packing are unaffected."""
     if bills is None or bills.empty:
         return (
             [html.Div("No bills match the current filters.",
                       style={"position": "absolute", "top": "48%", "left": "50%",
                               "transform": "translate(-50%, -50%)", "color": GRAY_500})],
             "0 bills",
+            CANVAS_HEIGHT,
         )
 
     cards = _collect_events(bills, events if events is not None else pd.DataFrame())
     if not cards:
-        return [], "0 stage events"
+        return [], "0 stage events", CANVAS_HEIGHT
 
-    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=20)
-    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=20)
+    if len(cards) > MAX_CARDS:
+        n_bills = len({c.bill_id for c in cards})
+        msg = (f"{len(cards):,} stage events across {n_bills:,} bills exceeds the "
+               f"{MAX_CARDS:,}-card render cap. Narrow the state, session, status, "
+               f"or impact-score filters to show fewer bills.")
+        return (
+            [html.Div(msg,
+                      style={"position": "absolute", "top": "48%", "left": "50%",
+                              "transform": "translate(-50%, -50%)", "color": GRAY_500,
+                              "maxWidth": "560px", "textAlign": "center",
+                              "lineHeight": "1.4"})],
+            f"{len(cards):,} stage events · render cap is {MAX_CARDS:,} — narrow filters to display",
+            CANVAS_HEIGHT,
+        )
+
+    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=5)
+    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=5)
     total_days = max(1, (d_max - d_min).days)
 
     canvas_w = _canvas_width_for([c.event_date for c in cards], d_min, d_max, zoom=zoom)
@@ -365,7 +469,7 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None):
         frac = (c.event_date - d_min).days / total_days
         c.x_px = MARGIN_X + int(frac * usable_w)
 
-    cards, dropped = _pack_rows(cards)
+    cards, dropped, row_defs = _pack_rows(cards)
 
     # Hidden data div carries the pixel-to-date mapping constants so the
     # clientside drag-zoom handler can convert a drag rectangle into date bounds
@@ -381,9 +485,55 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None):
                 "data-canvas-w": str(canvas_w),
             },
         ),
-        html.Div(className="timeline-axis",
-                 style={"left": f"{MARGIN_X}px", "right": f"{MARGIN_X}px"}),
     ]
+
+    # Session bands — one translucent rect + label per legislative session
+    # intersecting the visible window. Generalized across states: the start /
+    # end dates come from bill_events aggregation in loaders.sessions_in_range,
+    # so this renders correctly for every state we pull.
+    try:
+        from loaders.bills import sessions_in_range
+        states_in_view = sorted(bills["state"].dropna().unique().tolist()) if "state" in bills.columns else []
+        sessions = sessions_in_range(states_in_view, d_min, d_max)
+    except Exception:
+        sessions = pd.DataFrame()
+    if sessions is not None and not sessions.empty:
+        for _, srow in sessions.iterrows():
+            actual_start = pd.to_datetime(srow["start_date"])
+            actual_end = pd.to_datetime(srow["end_date"])
+            s_start = max(actual_start, d_min)
+            s_end   = min(actual_end, d_max)
+            if s_end <= s_start:
+                continue
+            left_frac = (s_start - d_min).days / total_days
+            right_frac = (s_end - d_min).days / total_days
+            x0 = MARGIN_X + int(left_frac * usable_w)
+            x1 = MARGIN_X + int(right_frac * usable_w)
+            width = max(1, x1 - x0)
+            children.append(html.Div(
+                className="session-band",
+                style={"left": f"{x0}px", "width": f"{width}px"},
+            ))
+            children.append(html.Div(
+                srow['session_name'],
+                className="session-band-label",
+                style={"left": f"{x0 + 6}px"},
+                title=srow['session_name'],
+            ))
+            sname = srow['session_name']
+            children.append(html.Div(
+                f"{sname} Start: {actual_start.strftime('%b %d, %Y')}",
+                className="session-date-label session-date-start",
+                style={"left": f"{x0}px"},
+            ))
+            children.append(html.Div(
+                f"{sname} End: {actual_end.strftime('%b %d, %Y')}",
+                className="session-date-label session-date-end",
+                style={"left": f"{x1}px"},
+            ))
+
+    children.append(html.Div(className="timeline-axis",
+                              style={"left": f"{MARGIN_X}px", "right": f"{MARGIN_X}px"}))
 
     for label, x, is_major in _tick_positions(d_min, d_max, canvas_w):
         children.append(html.Div(className="timeline-tick",
@@ -401,7 +551,7 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None):
         bill = bills_by_id[c.bill_id]
         bill_dict = bill.to_dict() if hasattr(bill, "to_dict") else bill
         color = STAGE_COLORS.get(c.stage_group, "#6A4C93")
-        row_top, anchor = ROWS[c.row]
+        row_top, anchor = row_defs[c.row]
 
         children.append(_stage_card(c, bill_dict, top=row_top, left=c.x_px - CARD_W // 2))
         children.append(html.Div(
@@ -431,9 +581,9 @@ def render_timeline(bills: pd.DataFrame, events: pd.DataFrame | None = None):
 
     n_bills = len(set(c.bill_id for c in cards))
     meta = f"{len(cards)} stage events across {n_bills} bills · {d_min.strftime('%b %Y')} – {d_max.strftime('%b %Y')}"
-    if dropped:
-        meta += f" · {dropped} stages hidden (narrow the date range)"
-    return children, meta
+    max_row_top = max((t for t, _ in row_defs), default=0)
+    canvas_h = max(CANVAS_HEIGHT, max_row_top + CARD_H + 40)
+    return children, meta, canvas_h
 
 
 def canvas_bounds(bills: pd.DataFrame, events: pd.DataFrame | None = None):
@@ -444,21 +594,20 @@ def canvas_bounds(bills: pd.DataFrame, events: pd.DataFrame | None = None):
     cards = _collect_events(bills, events if events is not None else pd.DataFrame())
     if not cards:
         return None
-    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=20)
-    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=20)
+    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=5)
+    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=5)
     return d_min.strftime("%Y-%m-%d"), d_max.strftime("%Y-%m-%d")
 
 
-def canvas_style_for(bills: pd.DataFrame, events: pd.DataFrame | None = None) -> dict:
-    """Canvas width = density-fit (wide enough that cards don't overlap at
-    default zoom). Height = CANVAS_HEIGHT so the wrap can scroll vertically
-    if more stacks get added later."""
+def canvas_style_for(bills: pd.DataFrame, events: pd.DataFrame | None = None,
+                     zoom: float = 1.0) -> dict:
+    """Canvas width = density-fit * zoom. Height = CANVAS_HEIGHT."""
     if bills is None or bills.empty:
         return {"minWidth": f"{MIN_CANVAS_WIDTH}px", "height": f"{CANVAS_HEIGHT}px"}
     cards = _collect_events(bills, events if events is not None else pd.DataFrame())
     if not cards:
         return {"minWidth": f"{MIN_CANVAS_WIDTH}px", "height": f"{CANVAS_HEIGHT}px"}
-    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=20)
-    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=20)
-    w = _canvas_width_for([c.event_date for c in cards], d_min, d_max)
+    d_min = min(c.event_date for c in cards) - pd.Timedelta(days=5)
+    d_max = max(c.event_date for c in cards) + pd.Timedelta(days=5)
+    w = _canvas_width_for([c.event_date for c in cards], d_min, d_max, zoom=zoom)
     return {"width": f"{w}px", "height": f"{CANVAS_HEIGHT}px"}

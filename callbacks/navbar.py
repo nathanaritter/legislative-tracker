@@ -1,47 +1,73 @@
 """
-Three navbar pills per user spec: bills scanned, CRE-relevant bills kept,
-last data update timestamp. No adverse/status pill.
+Navbar pills showing the data pipeline funnel per state: downloaded →
+deterministic filter → AI-classified CRE-relevant → scored. Pipeline
+counts come from _pipeline_stats.json written by the ETL run.py.
 """
+
+import json
+from pathlib import Path
 
 from dash import Input, Output, callback, html
 
 from loaders.bills import load_bills
+
+_STATS_PATH = Path(__file__).resolve().parent.parent.parent / "etl-base" / "temp" / "legislation" / "_pipeline_stats.json"
+
+
+def _load_stats():
+    try:
+        if _STATS_PATH.exists():
+            return json.loads(_STATS_PATH.read_text())
+    except Exception:
+        pass
+    return {}
 
 
 @callback(
     Output("navbar-metadata", "children"),
     Input("filters-store", "data"),
 )
-def populate_navbar(_filters):
-    # The pills reflect raw data ingest, not the current user filter — the user
-    # wants to see pipeline health regardless of what they're currently viewing.
-    bills = load_bills()
-    n_scanned = len(bills) if bills is not None else 0
+def populate_navbar(filters):
+    state = (filters or {}).get("states", [None])[0] if filters else None
+    stats = _load_stats()
+    st = stats.get(state, {}) if state else {}
 
-    if bills is None or bills.empty or "cre_relevant" not in bills.columns:
-        n_kept = 0
-    else:
-        n_kept = int(bills["cre_relevant"].fillna(False).astype(bool).sum())
+    n_downloaded = st.get("downloaded", 0)
+    n_filtered = st.get("deterministic_filter", 0)
+    n_cre = st.get("cre_relevant", 0)
+    n_scored = st.get("scored", 0)
 
-    last_str = "—"
-    if bills is not None and not bills.empty and "last_action_date" in bills.columns:
-        try:
-            last = bills["last_action_date"].max()
-            last_str = last.strftime("%Y-%m-%d %H:%M") if hasattr(last, "strftime") else str(last)[:16]
-        except Exception:
-            pass
+    # If no stats file yet, fall back to live counts from bills.csv.
+    if not st:
+        bills = load_bills()
+        if bills is not None and not bills.empty:
+            scope = bills[bills["state"] == state] if state else bills
+            n_downloaded = len(scope)
+            n_filtered = n_downloaded
+            n_cre = int(scope["cre_relevant"].fillna(False).astype(bool).sum()) if "cre_relevant" in scope.columns else 0
+            n_scored = int(scope["ai_risk_score"].notna().sum()) if "ai_risk_score" in scope.columns else 0
+
+    state_label = f" ({state})" if state else ""
 
     return [
         html.Span(
-            [html.I(className="bi bi-database me-1"), f"{n_scanned} bills scanned"],
+            [html.I(className="bi bi-download me-1"),
+             f"{n_downloaded:,} downloaded{state_label}"],
             className="meta-pill",
         ),
         html.Span(
-            [html.I(className="bi bi-funnel me-1"), f"{n_kept} CRE-relevant"],
+            [html.I(className="bi bi-funnel me-1"),
+             f"{n_filtered:,} filtered"],
             className="meta-pill",
         ),
         html.Span(
-            [html.I(className="bi bi-clock me-1"), f"Last update: {last_str}"],
+            [html.I(className="bi bi-robot me-1"),
+             f"{n_cre:,} CRE-relevant"],
+            className="meta-pill",
+        ),
+        html.Span(
+            [html.I(className="bi bi-bar-chart me-1"),
+             f"{n_scored:,} scored"],
             className="meta-pill",
         ),
     ]

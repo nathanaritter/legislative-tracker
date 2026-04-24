@@ -28,6 +28,26 @@ def _try_keyvault(secret_name: str) -> Optional[str]:
 
 def get_secret(env_name: str, kv_secret_name: Optional[str] = None) -> Optional[str]:
     """Look up a secret: env var first, then Key Vault. Returns None if not found."""
+    # Mirror etl-base/etl/shared/get_api_key pattern — auto-load .env so scripts
+    # run from a sibling repo's cwd still see the shared keys. Search both repos
+    # explicitly (cwd + sibling etl-base) so running from either works.
+    try:
+        from dotenv import load_dotenv
+        import pathlib
+        here = pathlib.Path(__file__).resolve()
+        # This file: <repo>/ingest/keyvault.py — walk up to find .env in the
+        # legislative-tracker repo, and also try ../etl-base/.env.
+        candidates = [
+            here.parent.parent / ".env",                        # legislative-tracker/.env
+            here.parent.parent.parent / "etl-base" / ".env",    # sibling etl-base/.env
+            pathlib.Path.cwd() / ".env",                        # current working dir
+        ]
+        for p in candidates:
+            if p.exists():
+                load_dotenv(p, override=False)
+    except ImportError:
+        pass
+
     val = os.environ.get(env_name)
     if val:
         return val
